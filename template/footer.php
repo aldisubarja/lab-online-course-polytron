@@ -21,7 +21,7 @@
             <hr>
             <div class="row">
                 <div class="col-12 text-center">
-                    <p>&copy; 2024 VulnCourse Platform. For educational purposes only.</p>
+                    <p>&copy; 2025 VulnCourse Platform. For educational purposes only.</p>
                 </div>
             </div>
         </div>

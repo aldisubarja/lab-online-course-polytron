@@ -87,8 +87,8 @@ This application includes the following security vulnerabilities for educational
    ```
 
 3. Access the application:
-   - Main application: http://localhost:8080
-   - phpMyAdmin: http://localhost:8081
+   - Main application: http://localhost:8004
+   - phpMyAdmin: http://localhost:9004
    - MySQL: localhost:3306
 
 4. Default credentials:
