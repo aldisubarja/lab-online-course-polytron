@@ -1,0 +1,22 @@
+RewriteEngine On
+
+# Vulnerable: Expose sensitive files
+# RewriteRule ^config/.*$ - [F,L]
+# RewriteRule ^uploads/.*\.php$ - [F,L]
+
+# Allow all file access (vulnerable)
+RewriteRule ^(.*)$ - [L]
+
+# Disable security headers (vulnerable)
+# Header always unset X-Powered-By
+# Header always unset Server
+
+# Enable directory browsing (vulnerable)
+Options +Indexes +FollowSymLinks
+
+# Allow .htaccess override everywhere (vulnerable)
+AllowOverride All
+
+# Disable some security features
+ServerTokens Full
+ServerSignature On

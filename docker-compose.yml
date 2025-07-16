@@ -1,0 +1,41 @@
+version: '3.9'
+
+services:
+  php:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: lab_online_course_polytron
+    volumes:
+      - .:/var/www/html
+    ports:
+      - "8005:80"
+    depends_on:
+      - lab_online_course_polytron
+
+  lab_online_course_polytron:
+    image: mysql:8.0
+    container_name: mysql_db_lab_online_course_polytron
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: db_lab_online_course_polytron
+    volumes:
+      - db_data_lab_online_course_polytron:/var/lib/mysql
+      - ./db_lab_online_course_polytron.sql:/docker-entrypoint-initdb.d/database.sql:ro
+    ports:
+      - "3307:3306"
+
+  phpmyadmin:
+    image: phpmyadmin:latest
+    container_name: phpmyadmin_lab_online_course_polytron
+    depends_on:
+      - lab_online_course_polytron
+    ports:
+      - "9005:80"
+    environment:
+      PMA_HOST: lab_online_course_polytron
+      MYSQL_ROOT_PASSWORD: root
+    restart: always
+
+volumes:
+  db_data_lab_online_course_polytron:
