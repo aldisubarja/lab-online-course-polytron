@@ -124,11 +124,31 @@ document.addEventListener('DOMContentLoaded', function() {
             e.preventDefault();
 
             const formData = new FormData(this);
+            
+            // Check if there's a file upload (avatar)
+            const hasFileUpload = formData.get('avatar') && formData.get('avatar').size > 0;
+            
+            if (hasFileUpload) {
+                // If there's a file upload, use traditional form submission
+                console.log('File upload detected, using traditional form submission');
+                showAlert('info', 'Uploading file...');
+                
+                // Add hidden field to indicate fallback
+                const hiddenField = document.createElement('input');
+                hiddenField.type = 'hidden';
+                hiddenField.name = 'use_fallback';
+                hiddenField.value = '1';
+                this.appendChild(hiddenField);
+                
+                // Submit form traditionally for file upload
+                this.submit();
+                return;
+            }
+            
+            // No file upload, use JSON API
             const jsonData = {};
-
-            // Convert FormData to JSON, skip file uploads for now
             for (let [key, value] of formData.entries()) {
-                if (key !== 'avatar') { // Skip file upload for JSON API
+                if (key !== 'avatar') {
                     jsonData[key] = value;
                 }
             }

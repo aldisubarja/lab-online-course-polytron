@@ -13,6 +13,7 @@ $conn = getConnection();
 
 // Vulnerable: No CSRF protection
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['use_api'])) {
+    
     // Fallback to traditional form processing if API fails
     $updateFields = [];
     $allowedFields = ['name', 'email', 'phone', 'role', 'avatar']; // role should not be user-editable!
@@ -49,7 +50,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['use_api'])) {
 
         // Vulnerable: Directory traversal
         $targetFile = $targetDir . basename($fileName);
-
+        
         // Create directory if not exists
         if (!file_exists($targetDir)) {
             mkdir($targetDir, 0777, true); // Vulnerable: Permissive permissions
@@ -127,7 +128,7 @@ require_once '../../template/nav.php';
                                 <!-- Current Avatar -->
                                 <div class="mb-3">
                                     <?php if ($currentUser['avatar']): ?>
-                                        <img src="<?php echo $currentUser['avatar']; ?>" 
+                                        <img src="<?php echo BASE_URL; ?>/pages/member/<?php echo $currentUser['avatar']; ?>" 
                                              class="img-thumbnail rounded-circle" 
                                              style="width: 150px; height: 150px; object-fit: cover;"
                                              alt="Avatar">
