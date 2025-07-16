@@ -277,36 +277,7 @@ require_once '../../template/nav.php';
     }
     ?>
 
-    <!-- Vulnerability Information -->
-    <div class="row mt-4">
-        <div class="col-12">
-            <div class="card border-danger">
-                <div class="card-header bg-danger text-white">
-                    <h6><i class="fas fa-bug"></i> Security Vulnerabilities in this Page</h6>
-                </div>
-                <div class="card-body">
-                    <div class="row">
-                        <div class="col-md-6">
-                            <ul class="small mb-0">
-                                <li>No role-based access control</li>
-                                <li>SQL injection in statistics queries</li>
-                                <li>XSS in student and course data</li>
-                                <li>No CSRF protection on actions</li>
-                            </ul>
-                        </div>
-                        <div class="col-md-6">
-                            <ul class="small mb-0">
-                                <li>IDOR for accessing other company data</li>
-                                <li>No authorization on enrollment actions</li>
-                                <li>Exposed sensitive information</li>
-                                <li>Weak session management</li>
-                            </ul>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
+    
 </div>
 
 <?php require_once '../../template/footer.php'; ?>

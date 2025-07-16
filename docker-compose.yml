@@ -23,7 +23,7 @@ services:
       - db_data_lab_online_course_polytron:/var/lib/mysql
       - ./db_lab_online_course_polytron.sql:/docker-entrypoint-initdb.d/database.sql:ro
     ports:
-      - "3308:3306"
+      - "3307:3306"
 
   phpmyadmin:
     image: phpmyadmin:latest

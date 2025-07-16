@@ -178,31 +178,7 @@ require_once '../../template/nav.php';
                 </div>
             </div>
             
-            <!-- Vulnerable Actions -->
-            <div class="card mt-3 border-danger">
-                <div class="card-header bg-danger text-white">
-                    <h6><i class="fas fa-bug"></i> Vulnerability Tests</h6>
-                </div>
-                <div class="card-body">
-                    <div class="d-grid gap-2">
-                        <!-- Vulnerable: IDOR to access other courses -->
-                        <a href="?id=<?php echo $courseId + 1; ?>" class="btn btn-outline-danger btn-sm">
-                            <i class="fas fa-eye"></i> View Next Course (IDOR)
-                        </a>
-                        
-                        <!-- Vulnerable: XSS through URL -->
-                        <a href="?id=<?php echo $courseId; ?>&message=<script>alert('XSS!')</script>" 
-                           class="btn btn-outline-warning btn-sm">
-                            <i class="fas fa-code"></i> Test XSS
-                        </a>
-                        
-                        <!-- Vulnerable: SQL injection -->
-                        <a href="?id=1' OR '1'='1" class="btn btn-outline-info btn-sm">
-                            <i class="fas fa-database"></i> SQL Injection
-                        </a>
-                    </div>
-                </div>
-            </div>
+            
         </div>
     </div>
     

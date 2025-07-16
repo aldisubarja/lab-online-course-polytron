@@ -1,12 +1,10 @@
 <?php
 // Vulnerable configuration file
 define('DB_HOST', $_ENV['DB_HOST'] ?? 'lab_online_course_polytron');
-#define('DB_HOST', $_ENV['DB_HOST'] ?? 'localhost');
 define('DB_PORT', $_ENV['DB_PORT'] ?? '3306');
 define('DB_USER', $_ENV['DB_USER'] ?? 'root');
 define('DB_PASSWORD', $_ENV['DB_PASSWORD'] ?? 'root');
 define('DB_NAME', $_ENV['DB_NAME'] ?? 'db_lab_online_course_polytron');
-#define('DB_NAME', $_ENV['DB_NAME'] ?? 'db_lab_online_course');
 
 // Base URL
 define('BASE_URL', 'http://localhost:8005');

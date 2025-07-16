@@ -181,7 +181,7 @@ require_once '../../template/nav.php';
                                             <td>
                                                 <?php if ($member['payment_proof']): ?>
                                                     <!-- Vulnerable: Direct file access without authorization -->
-                                                    <a href="/<?php echo $member['payment_proof']; ?>" 
+                                                    <a href="/pages/member/<?php echo $member['payment_proof']; ?>" 
                                                        target="_blank" class="btn btn-sm btn-outline-primary">
                                                         <i class="fas fa-file-image"></i> View Proof
                                                     </a>
@@ -266,56 +266,6 @@ require_once '../../template/nav.php';
         </div>
     </div>
 
-    <!-- Vulnerability Testing -->
-    <div class="row mt-4">
-        <div class="col-12">
-            <div class="card border-danger">
-                <div class="card-header bg-danger text-white">
-                    <h6><i class="fas fa-bug"></i> Vulnerability Testing</h6>
-                </div>
-                <div class="card-body">
-                    <div class="row">
-                        <div class="col-md-6">
-                            <h6>SQL Injection Tests:</h6>
-                            <ul class="small">
-                                <li><a href="?search=' OR '1'='1">Bypass search filter</a></li>
-                                <li><a href="?status=' UNION SELECT * FROM users WHERE '1'='1">Union attack</a></li>
-                                <li><a href="?search='; DROP TABLE enrollments; --">Drop table attack</a></li>
-                            </ul>
-                        </div>
-                        <div class="col-md-6">
-                            <h6>Authorization Issues:</h6>
-                            <ul class="small">
-                                <li>No CSRF protection on approve/reject</li>
-                                <li>Direct file access to payment proofs</li>
-                                <li>No verification of company ownership</li>
-                                <li>XSS in all user-controlled fields</li>
-                            </ul>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Debug Information -->
-    <?php if (DEBUG): ?>
-        <div class="row mt-4">
-            <div class="col-12">
-                <div class="card border-info">
-                    <div class="card-header bg-info text-white">
-                        <h6><i class="fas fa-code"></i> Debug Information</h6>
-                    </div>
-                    <div class="card-body">
-                        <pre class="small">
-SQL Query: <?php echo htmlspecialchars($membersQuery); ?>
-Company Data: <?php print_r($company); ?>
-                        </pre>
-                    </div>
-                </div>
-            </div>
-        </div>
-    <?php endif; ?>
-</div>
+   
 
 <?php require_once '../../template/footer.php'; ?>
