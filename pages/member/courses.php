@@ -1,7 +1,15 @@
 <?php
 require_once '../../config/env.php';
 
-startSession();
+function isLoggedIn(): bool {
+    return isset($_SESSION['user_id']);
+}
+
+function requireRole(array $allowedRoles): bool {
+    return isset($_SESSION['user_role']) && in_array($_SESSION['user_role'], $allowedRoles);
+}
+
+session_start();
 
 if (!isLoggedIn() || !requireRole(['member'])) {
     header('Location: ' . BASE_URL . '/pages/auth/login.php');
@@ -10,49 +18,70 @@ if (!isLoggedIn() || !requireRole(['member'])) {
 
 $conn = getConnection();
 
-// Vulnerable: SQL injection in search and filters
-$search = $_GET['search'] ?? '';
-$company = $_GET['company'] ?? '';
+// Sanitize and whitelist inputs
+$search = trim($_GET['search'] ?? '');
+$company = trim($_GET['company'] ?? '');
 $priceRange = $_GET['price_range'] ?? '';
 
-$sql = "SELECT c.*, comp.company_name FROM courses c 
+// Whitelist allowed price range values
+$allowedPriceRanges = ['free', 'low', 'medium', 'high'];
+if (!in_array($priceRange, $allowedPriceRanges)) {
+    $priceRange = ''; // fallback if tampered
+}
+
+// Start building the query
+$sql = "SELECT c.*, comp.company_name 
+        FROM courses c 
         JOIN companies comp ON c.company_id = comp.id 
-        WHERE c.is_active = 1";
+        WHERE c.is_active = 1 AND c.is_private = 0";  // Least privilege: public courses only
 
-if ($search) {
-    // Vulnerable: SQL injection
-    $sql .= " AND (c.title LIKE '%$search%' OR c.description LIKE '%$search%')";
+$params = [];
+
+// Optional: restrict based on user's company (if applicable)
+if ($_SESSION['user_role'] === 'member' && isset($_SESSION['company_id'])) {
+    $sql .= " AND c.company_id = :user_company_id";
+    $params[':user_company_id'] = $_SESSION['company_id'];
 }
 
-if ($company) {
-    // Vulnerable: SQL injection
-    $sql .= " AND comp.company_name = '$company'";
+// Filter: Search
+if (!empty($search)) {
+    $sql .= " AND (c.title LIKE :search OR c.description LIKE :search)";
+    $params[':search'] = '%' . $search . '%';
 }
 
-if ($priceRange) {
-    switch ($priceRange) {
-        case 'free':
-            $sql .= " AND c.price = 0";
-            break;
-        case 'low':
-            $sql .= " AND c.price > 0 AND c.price <= 50";
-            break;
-        case 'medium':
-            $sql .= " AND c.price > 50 AND c.price <= 100";
-            break;
-        case 'high':
-            $sql .= " AND c.price > 100";
-            break;
-    }
+// Filter: Company (exact match)
+if (!empty($company)) {
+    $sql .= " AND comp.company_name = :company";
+    $params[':company'] = $company;
 }
 
+// Filter: Price range
+switch ($priceRange) {
+    case 'free':
+        $sql .= " AND c.price = 0";
+        break;
+    case 'low':
+        $sql .= " AND c.price > 0 AND c.price <= 50";
+        break;
+    case 'medium':
+        $sql .= " AND c.price > 50 AND c.price <= 100";
+        break;
+    case 'high':
+        $sql .= " AND c.price > 100";
+        break;
+}
+
+// Sort by newest
 $sql .= " ORDER BY c.created_at DESC";
 
-$courses = $conn->query($sql);
+// Prepare and execute
+$stmt = $conn->prepare($sql);
+$stmt->execute($params);
+$courses = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-// Get companies for filter
-$companiesQuery = "SELECT DISTINCT company_name FROM companies ORDER BY company_name";
-$companies = $conn->query($companiesQuery);
+// Get company list for filter dropdown
+$companiesStmt = $conn->query("SELECT DISTINCT company_name FROM companies ORDER BY company_name");
+$companies = $companiesStmt->fetchAll(PDO::FETCH_ASSOC);
 
 $pageTitle = "Browse Courses - VulnCourse";
 require_once '../../template/header.php';
