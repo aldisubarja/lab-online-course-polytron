@@ -3,6 +3,10 @@ require_once '../../config/env.php';
 
 startSession();
 
+if (empty($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+}
+
 if (!isLoggedIn() || !requireRole(['company'])) {
     header('Location: ' . BASE_URL . '/pages/auth/login.php');
     exit;
@@ -17,61 +21,66 @@ $companyQuery = "SELECT * FROM companies WHERE user_id = $userId";
 $companyResult = $conn->query($companyQuery);
 $company = $companyResult ? $companyResult->fetch_assoc() : null;
 
-// Vulnerable: No CSRF protection
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
-    $action = $_POST['action'];
+    $csrf_token = $_POST['csrf_token'] ?? '';
+
+    if (!$csrf_token || $csrf_token !== $_SESSION['csrf_token']) {
+        $errors[] = "CSRF token is invalid or missing.";
+    }else{
+        $action = $_POST['action'];
     
-    if ($action === 'create') {
-        $title = $_POST['title'] ?? '';
-        $description = $_POST['description'] ?? '';
-        $price = $_POST['price'] ?? 0;
-        
-        // Vulnerable: No input validation
-        if (!empty($title)) {
-            // Vulnerable: Create slug without validation
-            $slug = strtolower(str_replace(' ', '-', $title));
+        if ($action === 'create') {
+            $title = $_POST['title'] ?? '';
+            $description = $_POST['description'] ?? '';
+            $price = $_POST['price'] ?? 0;
             
-            // Vulnerable: SQL injection
-            $insertQuery = "INSERT INTO courses (company_id, title, slug, description, price) 
-                           VALUES (" . $company['id'] . ", '$title', '$slug', '$description', $price)";
-            
-            if ($conn->query($insertQuery)) {
-                $success = "Course created successfully!";
+            // Vulnerable: No input validation
+            if (!empty($title)) {
+                // Vulnerable: Create slug without validation
+                $slug = strtolower(str_replace(' ', '-', $title));
+                
+                // Vulnerable: SQL injection
+                $insertQuery = "INSERT INTO courses (company_id, title, slug, description, price) 
+                            VALUES (" . $company['id'] . ", '$title', '$slug', '$description', $price)";
+                
+                if ($conn->query($insertQuery)) {
+                    $success = "Course created successfully!";
+                } else {
+                    $error = "Failed to create course: " . $conn->error;
+                }
             } else {
-                $error = "Failed to create course: " . $conn->error;
+                $error = "Title is required";
             }
-        } else {
-            $error = "Title is required";
-        }
-    } elseif ($action === 'update') {
-        $courseId = $_POST['course_id'] ?? 0;
-        $title = $_POST['title'] ?? '';
-        $description = $_POST['description'] ?? '';
-        $price = $_POST['price'] ?? 0;
-        
-        // Vulnerable: No authorization check - could update other company's courses
-        // Vulnerable: SQL injection
-        $updateQuery = "UPDATE courses SET 
-                        title = '$title', 
-                        description = '$description', 
-                        price = $price 
-                        WHERE id = $courseId";
-        
-        if ($conn->query($updateQuery)) {
-            $success = "Course updated successfully!";
-        } else {
-            $error = "Failed to update course: " . $conn->error;
-        }
-    } elseif ($action === 'delete') {
-        $courseId = $_POST['course_id'] ?? 0;
-        
-        // Vulnerable: No authorization check and SQL injection
-        $deleteQuery = "DELETE FROM courses WHERE id = $courseId";
-        
-        if ($conn->query($deleteQuery)) {
-            $success = "Course deleted successfully!";
-        } else {
-            $error = "Failed to delete course: " . $conn->error;
+        } elseif ($action === 'update') {
+            $courseId = $_POST['course_id'] ?? 0;
+            $title = $_POST['title'] ?? '';
+            $description = $_POST['description'] ?? '';
+            $price = $_POST['price'] ?? 0;
+            
+            // Vulnerable: No authorization check - could update other company's courses
+            // Vulnerable: SQL injection
+            $updateQuery = "UPDATE courses SET 
+                            title = '$title', 
+                            description = '$description', 
+                            price = $price 
+                            WHERE id = $courseId";
+            
+            if ($conn->query($updateQuery)) {
+                $success = "Course updated successfully!";
+            } else {
+                $error = "Failed to update course: " . $conn->error;
+            }
+        } elseif ($action === 'delete') {
+            $courseId = $_POST['course_id'] ?? 0;
+            
+            // Vulnerable: No authorization check and SQL injection
+            $deleteQuery = "DELETE FROM courses WHERE id = $courseId";
+            
+            if ($conn->query($deleteQuery)) {
+                $success = "Course deleted successfully!";
+            } else {
+                $error = "Failed to delete course: " . $conn->error;
+            }
         }
     }
 }
@@ -138,9 +147,9 @@ require_once '../../template/nav.php';
                                     <i class="fas fa-edit"></i> Edit Course
                                 </button>
                                 
-                                <!-- Vulnerable: No CSRF protection -->
                                 <form method="POST" style="display: inline;" 
                                       onsubmit="return confirm('Are you sure you want to delete this course?')">
+                                    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($_SESSION['csrf_token']); ?>">
                                     <input type="hidden" name="action" value="delete">
                                     <input type="hidden" name="course_id" value="<?php echo $course['id']; ?>">
                                     <button type="submit" class="btn btn-danger w-100">
@@ -187,8 +196,9 @@ require_once '../../template/nav.php';
                 <h5 class="modal-title"><i class="fas fa-plus"></i> Create New Course</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
-            <!-- Vulnerable: No CSRF token -->
+
             <form method="POST">
+                <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($_SESSION['csrf_token']); ?>">
                 <div class="modal-body">
                     <input type="hidden" name="action" value="create">
                     
@@ -227,8 +237,8 @@ require_once '../../template/nav.php';
                 <h5 class="modal-title"><i class="fas fa-edit"></i> Edit Course</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
-            <!-- Vulnerable: No CSRF token -->
             <form method="POST" id="editCourseForm">
+                <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($_SESSION['csrf_token']); ?>">
                 <div class="modal-body">
                     <input type="hidden" name="action" value="update">
                     <input type="hidden" name="course_id" id="edit_course_id">
