@@ -1,22 +1,17 @@
 <?php
 require_once 'config/env.php';
 
-// Vulnerable: SQL injection in search
-$searchQuery = isset($_GET['search']) ? $_GET['search'] : '';
+$searchQuery = isset($_GET['search']) ? '%'.$_GET['search'].'%' : '%%';
+$oriSearchQuery = isset($_GET['search']) ? $_GET['search'] : '';
+
 $conn = getConnection();
 
-// Vulnerable: Direct concatenation without sanitization
-$sql = "SELECT c.*, comp.company_name FROM courses c 
-        JOIN companies comp ON c.company_id = comp.id 
-        WHERE c.is_active = 1";
+$sql = "SELECT c.*, comp.company_name FROM courses c JOIN companies comp ON c.company_id = comp.id WHERE c.is_active = 1  AND (c.title LIKE ? OR c.description LIKE ?) ORDER BY c.created_at DESC LIMIT 6";
 
-if ($searchQuery) {
-    // Vulnerable: SQL injection
-    $sql .= " AND (c.title LIKE '%$searchQuery%' OR c.description LIKE '%$searchQuery%')";
-}
-
-$sql .= " ORDER BY c.created_at DESC LIMIT 6";
-$courses = $conn->query($sql);
+$stmt = $conn->prepare($sql);
+$stmt->bind_param("ss", $searchQuery, $searchQuery); // All parameters are strings
+$stmt->execute();
+$courses = $stmt->get_result();
 
 $pageTitle = "Home - VulnCourse";
 require_once 'template/header.php';
@@ -55,7 +50,7 @@ require_once 'template/nav.php';
                     <!-- Vulnerable: XSS in search value -->
                     <input type="text" class="form-control" name="search" 
                            placeholder="Search courses..." 
-                           value="<?php echo $searchQuery; ?>">
+                           value="<?php echo $oriSearchQuery; ?>">
                     <button class="btn btn-primary" type="submit">
                         <i class="fas fa-search"></i> Search
                     </button>
