@@ -49,7 +49,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     }
                     
                     $success = "Registration successful! You can now login.";
-                    logToFile($phone . "Registered.");
+                    writeLogToFile($phone . "Registered.");
                 } else {
                     $error = "Registration failed: " . $stmt->error;
                 }

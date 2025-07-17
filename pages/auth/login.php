@@ -52,10 +52,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         }
                         $showOtpForm = true;
                         $generatedOtp = $otp; // Store OTP to display (vulnerable: should not display in real app)
-                        logToFile($phone . "OTP Sent to your phone. [regenerate_otp]");
+                        writeLogToFile($phone . "OTP Sent to your phone. [regenerate_otp]");
                     } else {
                         $error = "Failed to send OTP";
-                        logToFile($phone . "Failed to send OTP.");
+                        writeLogToFile($phone . "Failed to send OTP.");
                     }
                 } else {
                     $error = "Phone number not found";
@@ -90,7 +90,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                     $stmt->execute();
                     
-                    logToFile($phone . "Login and redirected to Dashboard.");
+                    writeLogToFile($phone . "Login and redirected to Dashboard.");
 
                     // Vulnerable: No session regeneration
                     if ($user['role'] === 'member') {
@@ -101,7 +101,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     exit;
                 } else {
                     $error = "Invalid or expired OTP";
-                    logToFile($phone . "Invalid or expired OTP.");
+                    writeLogToFile($phone . "Invalid or expired OTP.");
 
                 }
             }

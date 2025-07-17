@@ -1,53 +1,79 @@
 <?php
 require_once '../../config/env.php';
+require_once '../../module/logger.php';
 
 startSession();
 
-// Vulnerable: No proper authorization check
+// ✅ Enforce proper authentication and role-based authorization
 if (!isLoggedIn() || !requireRole(['company'])) {
     header('Location: ' . BASE_URL . '/pages/auth/login.php');
     exit;
 }
 
-$currentUser = getCurrentUser();
-
-// Vulnerable: No role validation - any logged in user can access
-// Should check if user role is 'company'
-
 $conn = getConnection();
 $userId = $_SESSION['user_id'];
 
-// Get company information
-$companyQuery = "SELECT * FROM companies WHERE user_id = $userId";
-$companyResult = $conn->query($companyQuery);
-$company = $companyResult ? $companyResult->fetch_assoc() : null;
+// ✅ Use prepared statements for all queries
+try {
+    // Get company information
+    $stmt = $conn->prepare("SELECT * FROM companies WHERE user_id = ?");
+    $stmt->bind_param("i", $userId);
+    $stmt->execute();
+    $companyResult = $stmt->get_result();
+    $company = $companyResult ? $companyResult->fetch_assoc() : null;
 
-// Get statistics
-$coursesQuery = "SELECT COUNT(*) as total FROM courses WHERE company_id = " . ($company['id'] ?? 0);
-$coursesResult = $conn->query($coursesQuery);
-$coursesCount = $coursesResult ? $coursesResult->fetch_assoc()['total'] : 0;
+    $companyId = $company['id'] ?? 0;
 
-$enrollmentsQuery = "SELECT COUNT(*) as total FROM enrollments e 
-                     JOIN courses c ON e.course_id = c.id 
-                     WHERE c.company_id = " . ($company['id'] ?? 0);
-$enrollmentsResult = $conn->query($enrollmentsQuery);
-$enrollmentsCount = $enrollmentsResult ? $enrollmentsResult->fetch_assoc()['total'] : 0;
+    // Courses count
+    $stmt = $conn->prepare("SELECT COUNT(*) as total FROM courses WHERE company_id = ?");
+    $stmt->bind_param("i", $companyId);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $coursesCount = $result ? $result->fetch_assoc()['total'] : 0;
 
-$pendingQuery = "SELECT COUNT(*) as total FROM enrollments e 
-                 JOIN courses c ON e.course_id = c.id 
-                 WHERE c.company_id = " . ($company['id'] ?? 0) . " AND e.status = 'pending'";
-$pendingResult = $conn->query($pendingQuery);
-$pendingCount = $pendingResult ? $pendingResult->fetch_assoc()['total'] : 0;
+    // Enrollments count
+    $stmt = $conn->prepare("
+        SELECT COUNT(*) as total 
+        FROM enrollments e 
+        JOIN courses c ON e.course_id = c.id 
+        WHERE c.company_id = ?");
+    $stmt->bind_param("i", $companyId);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $enrollmentsCount = $result ? $result->fetch_assoc()['total'] : 0;
 
-// Get recent enrollments
-$recentQuery = "SELECT e.*, c.title, u.name as student_name, u.email 
-                FROM enrollments e 
-                JOIN courses c ON e.course_id = c.id 
-                JOIN users u ON e.user_id = u.id 
-                WHERE c.company_id = " . ($company['id'] ?? 0) . " 
-                ORDER BY e.enrolled_at DESC 
-                LIMIT 10";
-$recentEnrollments = $conn->query($recentQuery);
+    // Pending enrollments
+    $status = 'pending';
+    $stmt = $conn->prepare("
+        SELECT COUNT(*) as total 
+        FROM enrollments e 
+        JOIN courses c ON e.course_id = c.id 
+        WHERE c.company_id = ? AND e.status = ?");
+    $stmt->bind_param("is", $companyId, $status);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $pendingCount = $result ? $result->fetch_assoc()['total'] : 0;
+
+    // Recent enrollments
+    $stmt = $conn->prepare("
+        SELECT e.*, c.title, u.name as student_name, u.email 
+        FROM enrollments e 
+        JOIN courses c ON e.course_id = c.id 
+        JOIN users u ON e.user_id = u.id 
+        WHERE c.company_id = ? 
+        ORDER BY e.enrolled_at DESC 
+        LIMIT 10");
+    $stmt->bind_param("i", $companyId);
+    $stmt->execute();
+    $recentEnrollments = $stmt->get_result();
+
+} catch (Exception $e) {
+    // ✅ Log the full error server-side (never show raw errors to users)
+    writeLogToFile("Error fetching company dashboard data: " . $e->getMessage());
+
+    // Optionally show a friendly error message or redirect
+    die("An unexpected error occurred. Please try again later.");
+}
 
 $pageTitle = "Company Dashboard - VulnCourse";
 require_once '../../template/header.php';
