@@ -3,16 +3,12 @@ require_once '../../config/env.php';
 
 startSession();
 
-// Vulnerable: No proper authorization check
 if (!isLoggedIn() || !requireRole(['company'])) {
     header('Location: ' . BASE_URL . '/pages/auth/login.php');
     exit;
 }
 
 $currentUser = getCurrentUser();
-
-// Vulnerable: No role validation - any logged in user can access
-// Should check if user role is 'company'
 
 $conn = getConnection();
 $userId = $_SESSION['user_id'];
@@ -194,13 +190,11 @@ require_once '../../template/nav.php';
                                 <tbody>
                                     <?php while ($enrollment = $recentEnrollments->fetch_assoc()): ?>
                                         <tr>
-                                            <!-- Vulnerable: XSS in student name -->
                                             <td>
-                                                <?php echo $enrollment['student_name']; ?>
+                                                <?php echo htmlspecialchars($enrollment['student_name']); ?>
                                                 <br><small class="text-muted"><?php echo htmlspecialchars($enrollment['email']); ?></small>
                                             </td>
-                                            <!-- Vulnerable: XSS in course title -->
-                                            <td><?php echo $enrollment['title']; ?></td>
+                                            <td><?php echo htmlspecialchars($enrollment['title']); ?></td>
                                             <td>
                                                 <?php
                                                 $statusClass = '';
