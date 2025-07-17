@@ -26,10 +26,9 @@ require_once 'template/nav.php';
                 <h1 class="display-4">Welcome to VulnCourse Platform</h1>
                 <p class="lead">Learn cybersecurity through hands-on vulnerable applications. This platform intentionally contains security flaws for educational purposes.</p>
                 
-                <!-- Vulnerable: XSS through GET parameter -->
                 <?php if (isset($_GET['welcome'])): ?>
                     <div class="alert alert-info">
-                        <?php echo $_GET['welcome']; ?>
+                        <?php echo htmlspecialchars($_GET['welcome']); ?>
                     </div>
                 <?php endif; ?>
                 
@@ -47,10 +46,9 @@ require_once 'template/nav.php';
         <div class="col-md-8 mx-auto">
             <form method="GET" action="">
                 <div class="input-group">
-                    <!-- Vulnerable: XSS in search value -->
                     <input type="text" class="form-control" name="search" 
                            placeholder="Search courses..." 
-                           value="<?php echo $oriSearchQuery; ?>">
+                           value="<?php echo htmlspecialchars($oriSearchQuery); ?>">
                     <button class="btn btn-primary" type="submit">
                         <i class="fas fa-search"></i> Search
                     </button>
