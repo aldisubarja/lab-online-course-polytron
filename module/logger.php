@@ -1,5 +1,5 @@
 <?php
-function writewriteLogToFile($message, $logDir = './logs/') {
+function writeLogToFile($message, $logDir = './logs/') {
     // Ensure log directory exists
     if (!file_exists($logDir)) {
         mkdir($logDir, 0775, true);
