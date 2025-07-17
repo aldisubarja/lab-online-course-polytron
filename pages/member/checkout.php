@@ -53,36 +53,63 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $error = "Failed to enroll: " . $conn->error;
         }
     } else {
-        // Paid course - handle payment proof upload
-        if (isset($_FILES['payment_proof']) && $_FILES['payment_proof']['error'] === UPLOAD_ERR_OK) {
-            // Vulnerable: No file validation
-            $fileName = $_FILES['payment_proof']['name'];
-            $targetDir = 'uploads/payments/';
-            
-            // Vulnerable: Directory traversal
-            $targetFile = $targetDir . basename($fileName);
-            
-            if (!file_exists($targetDir)) {
-                mkdir($targetDir, 0777, true); // Vulnerable: Permissive permissions
-            }
-            
-            if (move_uploaded_file($_FILES['payment_proof']['tmp_name'], $targetFile)) {
-                // Vulnerable: SQL injection
-                $insertQuery = "INSERT INTO enrollments (user_id, course_id, payment_proof, status) 
-                                VALUES ($userId, $courseId, '$targetFile', 'pending')";
-                
-                if ($conn->query($insertQuery)) {
-                    header("Location: " . BASE_URL . "/pages/member/course-detail.php?id=$courseId&message=Payment submitted for review");
-                    exit;
-                } else {
-                    $error = "Failed to submit payment: " . $conn->error;
-                }
-            } else {
-                $error = "Failed to upload payment proof";
-            }
-        } else {
-            $error = "Payment proof is required for paid courses";
+// Paid course – handle payment proof upload
+if (isset($_FILES['payment_proof']) && $_FILES['payment_proof']['error'] === UPLOAD_ERR_OK) {
+    $fileTmpPath   = $_FILES['payment_proof']['tmp_name'];
+    $fileName      = $_FILES['payment_proof']['name'];
+    $fileSize      = $_FILES['payment_proof']['size'];
+    $fileType      = mime_content_type($fileTmpPath);
+
+    // 1. Validate MIME type and extension
+    $allowedMimeTypes    = ['image/jpeg', 'image/png'];
+    $allowedExtensions   = ['jpg', 'jpeg', 'png'];
+    $fileExt             = strtolower(pathinfo($fileName, PATHINFO_EXTENSION));
+
+    if (!in_array($fileType, $allowedMimeTypes, true) || !in_array($fileExt, $allowedExtensions, true)) {
+        $error = "Invalid file type. Only JPG, PNG allowed.";
+    }
+    // 2. Limit file size (e.g., max 5MB)
+    elseif ($fileSize > 5 * 1024 * 1024) {
+        $error = "File is too large. Maximum 5MB allowed.";
+    } else {
+        // 3. Generate a safe, unique filename
+        $safeName       = bin2hex(random_bytes(16)) . '.' . $fileExt;
+
+        $uploadDir      = __DIR__ . '/uploads/payments/';
+        if (!is_dir($uploadDir)) {
+            // Restrictive permissions
+            mkdir($uploadDir, 0755, true);
         }
+
+        $destPath       = $uploadDir . $safeName;
+
+        // 4. Move the file
+        if (move_uploaded_file($fileTmpPath, $destPath)) {
+            // 5. Use prepared statements to avoid SQL injection
+            $stmt = $conn->prepare(
+                "INSERT INTO enrollments (user_id, course_id, payment_proof, status)
+                 VALUES (?, ?, ?, 'pending')"
+            );
+            $relativePath = 'uploads/payments/' . $safeName;
+            $stmt->bind_param('iis', $userId, $courseId, $relativePath);
+
+            if ($stmt->execute()) {
+                header("Location: " . BASE_URL . "/pages/member/course-detail.php"
+                     . "?id=" . urlencode($courseId)
+                     . "&message=" . urlencode("Payment submitted for review"));
+                exit;
+            } else {
+                $error = "Failed to submit payment: " . htmlspecialchars($stmt->error, ENT_QUOTES, 'UTF-8');
+            }
+            $stmt->close();
+        } else {
+            $error = "Failed to upload payment proof.";
+        }
+    }
+} else {
+    $error = "Payment proof is required for paid courses.";
+}
+
     }
 }
 
