@@ -11,15 +11,17 @@ if (!isLoggedIn() || !requireRole(['member'])) {
 $conn = getConnection();
 $userId = $_SESSION['user_id'];
 
-// Vulnerable: SQL injection
 $query = "SELECT e.*, c.title, c.slug, c.price, comp.company_name 
           FROM enrollments e 
           JOIN courses c ON e.course_id = c.id 
           JOIN companies comp ON c.company_id = comp.id 
-          WHERE e.user_id = $userId 
+          WHERE e.user_id = ? 
           ORDER BY e.enrolled_at DESC";
 
-$enrollments = $conn->query($query);
+$stmt = $conn->prepare($query);
+$stmt->bind_param('i', $userId);
+$stmt->execute();
+$enrollments = $stmt->get_result();
 
 $pageTitle = "My Courses - VulnCourse";
 require_once '../../template/header.php';
@@ -73,8 +75,8 @@ require_once '../../template/nav.php';
                             <div class="card h-100">
                                 <div class="card-body">
                                     <div class="d-flex justify-content-between align-items-start mb-2">
-                                        <!-- Vulnerable: XSS in course title -->
-                                        <h5 class="card-title"><?php echo $enrollment['title']; ?></h5>
+                                        
+                                        <h5 class="card-title"><?php echo htmlspecialchars($enrollment['title']); ?></h5>
                                         
                                         <?php
                                         $statusClass = '';
@@ -114,11 +116,13 @@ require_once '../../template/nav.php';
                                         
                                         <div>
                                             <?php if ($enrollment['status'] === 'confirmed'): ?>
-                                                <!-- Vulnerable: No authorization check for course access -->
-                                                <a href="<?php echo BASE_URL; ?>/pages/member/course-materials.php?slug=<?php echo $enrollment['slug']; ?>"
-                                                   class="btn btn-primary btn-sm">
-                                                    <i class="fas fa-play"></i> Start Learning
-                                                </a>
+                                                <?php
+                                                if ($enrollment['user_id'] == $_SESSION['user_id'] && $enrollment['status'] === 'confirmed'): ?>
+                                                    <a href="<?php echo BASE_URL; ?>/pages/member/course-materials.php?slug=<?php echo urlencode($enrollment['slug']); ?>"
+                                                       class="btn btn-primary btn-sm">
+                                                        <i class="fas fa-play"></i> Start Learning
+                                                    </a>
+                                                <?php endif; ?>
                                             <?php elseif ($enrollment['status'] === 'pending'): ?>
                                                 <button class="btn btn-warning btn-sm" disabled>
                                                     <i class="fas fa-clock"></i> Pending Review
@@ -165,8 +169,7 @@ require_once '../../template/nav.php';
                             <div class="col-md-6 mb-4">
                                 <div class="card border-success h-100">
                                     <div class="card-body">
-                                        <!-- Vulnerable: XSS in course title -->
-                                        <h5 class="card-title text-success"><?php echo $enrollment['title']; ?></h5>
+                                        <h5 class="card-title text-success"><?php echo htmlspecialchars($enrollment['title']); ?></h5>
                                         <p class="text-muted mb-2">
                                             <i class="fas fa-building"></i> <?php echo htmlspecialchars($enrollment['company_name']); ?>
                                         </p>
