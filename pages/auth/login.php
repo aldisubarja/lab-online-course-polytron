@@ -148,20 +148,6 @@ require_once '../../template/nav.php';
                     <?php else: ?>
                         <!-- Step 2: OTP Verification -->
 
-                        <!-- Display OTP Code (Vulnerable: Should not display in real app) -->
-                        <?php if (isset($generatedOtp)): ?>
-                            <div class="alert alert-info border-primary">
-                                <div class="d-flex align-items-center">
-                                    <i class="fas fa-mobile-alt fa-2x me-3"></i>
-                                    <div>
-                                        <h6 class="mb-1">📱 SMS Simulation</h6>
-                                        <p class="mb-1">Your OTP code is: <strong class="fs-4 text-primary"><?php echo $generatedOtp; ?></strong></p>
-                                        <small class="text-muted">This code will expire in 5 minutes</small>
-                                    </div>
-                                </div>
-                            </div>
-                        <?php endif; ?>
-
                         <form method="POST" action="">
                             <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($_SESSION['csrf_token']); ?>">
                             <input type="hidden" name="step" value="2">
