@@ -3,84 +3,96 @@ require_once '../../config/env.php';
 
 startSession();
 
-// Vulnerable: No CSRF protection
+if (empty($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $phone = $_POST['phone'] ?? '';
-    $step = $_POST['step'] ?? '1';
-    $action = $_POST['action'] ?? '';
+    $csrf_token = $_POST['csrf_token'] ?? '';
+    if (!$csrf_token || $csrf_token !== $_SESSION['csrf_token']) {
+        $error = 'CSRF token is invalid or missing.';
+    }else{
+        $phone = $_POST['phone'] ?? '';
+        $step = $_POST['step'] ?? '1';
+        $action = $_POST['action'] ?? '';
 
-    $conn = getConnection();
+        $conn = getConnection();
 
-    if ($step === '1' || $action === 'regenerate_otp') {
-        // Step 1: Phone number validation and OTP generation
-        if (empty($phone)) {
-            $error = "Phone number is required";
-        } else {
-            // Vulnerable: SQL injection
-            $query = "SELECT * FROM users WHERE phone = '$phone'";
-            $result = $conn->query($query);
+        if ($step === '1' || $action === 'regenerate_otp') {
+            // Step 1: Phone number validation and OTP generation
+            if (empty($phone)) {
+                $error = "Phone number is required";
+            } else {
+                $stmt = $conn->prepare("SELECT * FROM users WHERE phone = ?");
+                $stmt->bind_param("s", $phone); // "s" means the parameter is a string
+                $stmt->execute();
 
-            if ($result && $result->num_rows > 0) {
-                $user = $result->fetch_assoc();
+                $result = $stmt->get_result();
 
-                // Generate OTP (vulnerable: weak random)
-                $otp = str_pad(rand(0, 999999), 6, '0', STR_PAD_LEFT);
-                $otpExpires = date('Y-m-d H:i:s', time() + 300); // 5 minutes
+                if ($result && $result->num_rows > 0) {
+                    $user = $result->fetch_assoc();
 
-                // Vulnerable: SQL injection
-                $updateQuery = "UPDATE users SET otp_code = '$otp', otp_expires = '$otpExpires' WHERE phone = '$phone'";
-                $conn->query($updateQuery);
+                    // Generate OTP (vulnerable: weak random)
+                    $otp = str_pad(rand(0, 999999), 6, '0', STR_PAD_LEFT);
+                    $otpExpires = date('Y-m-d H:i:s', time() + 300); // 5 minutes
 
-                // Vulnerable: OTP sent to SMS (simulated)
-                $smsSent = true; // In real app, send SMS here
+                    $stmt = $conn->prepare("UPDATE users SET otp_code = ?, otp_expires = ? WHERE phone = ?");
+                    $stmt->bind_param("sss", $otp, $otpExpires, $phone); // All parameters are strings
+                    $stmt->execute();
 
-                if ($smsSent) {
-                    if ($action === 'regenerate_otp') {
-                        $success = "New OTP has been sent to your phone: " . $phone;
+                    // Vulnerable: OTP sent to SMS (simulated)
+                    $smsSent = true; // In real app, send SMS here
+
+                    if ($smsSent) {
+                        if ($action === 'regenerate_otp') {
+                            $success = "New OTP has been sent to your phone: " . $phone;
+                        } else {
+                            $success = "OTP sent to your phone: " . $phone;
+                        }
+                        $showOtpForm = true;
+                        $generatedOtp = $otp; // Store OTP to display (vulnerable: should not display in real app)
                     } else {
-                        $success = "OTP sent to your phone: " . $phone;
+                        $error = "Failed to send OTP";
                     }
-                    $showOtpForm = true;
-                    $generatedOtp = $otp; // Store OTP to display (vulnerable: should not display in real app)
                 } else {
-                    $error = "Failed to send OTP";
+                    $error = "Phone number not found";
                 }
-            } else {
-                $error = "Phone number not found";
             }
-        }
-    } elseif ($step === '2') {
-        // Step 2: OTP verification
-        $otp = $_POST['otp'] ?? '';
-        
-        if (empty($phone) || empty($otp)) {
-            $error = "Phone number and OTP are required";
-        } else {
-            // Vulnerable: SQL injection
-            $query = "SELECT * FROM users WHERE phone = '$phone' AND otp_code = '$otp' AND otp_expires > NOW()";
-            $result = $conn->query($query);
+        } elseif ($step === '2') {
+            // Step 2: OTP verification
+            $otp = $_POST['otp'] ?? '';
             
-            if ($result && $result->num_rows > 0) {
-                $user = $result->fetch_assoc();
-                
-                // Vulnerable: Session fixation
-                $_SESSION['user_id'] = $user['id'];
-                $_SESSION['user_role'] = $user['role'];
-                $_SESSION['user_name'] = $user['name'];
-                
-                // Clear OTP
-                $clearQuery = "UPDATE users SET otp_code = NULL, otp_expires = NULL WHERE id = " . $user['id'];
-                $conn->query($clearQuery);
-                
-                // Vulnerable: No session regeneration
-                if ($user['role'] === 'member') {
-                    header('Location: ' . BASE_URL . '/pages/member/dashboard.php');
-                } elseif ($user['role'] === 'company') {
-                    header('Location: ' . BASE_URL . '/pages/company/dashboard.php');
-                }
-                exit;
+            if (empty($phone) || empty($otp)) {
+                $error = "Phone number and OTP are required";
             } else {
-                $error = "Invalid or expired OTP";
+                $stmt = $conn->prepare("SELECT * FROM users WHERE phone = ? AND otp_code = ? AND otp_expires > NOW()");
+                $stmt->bind_param("ss", $phone, $otp); // Both inputs are strings
+
+                $stmt->execute();
+                $result = $stmt->get_result();
+                
+                if ($result && $result->num_rows > 0) {
+                    $user = $result->fetch_assoc();
+                    
+                    // Vulnerable: Session fixation
+                    $_SESSION['user_id'] = $user['id'];
+                    $_SESSION['user_role'] = $user['role'];
+                    $_SESSION['user_name'] = $user['name'];
+                    
+                    // Clear OTP
+                    $clearQuery = "UPDATE users SET otp_code = NULL, otp_expires = NULL WHERE id = " . $user['id'];
+                    $conn->query($clearQuery);
+                    
+                    // Vulnerable: No session regeneration
+                    if ($user['role'] === 'member') {
+                        header('Location: ' . BASE_URL . '/pages/member/dashboard.php');
+                    } elseif ($user['role'] === 'company') {
+                        header('Location: ' . BASE_URL . '/pages/company/dashboard.php');
+                    }
+                    exit;
+                } else {
+                    $error = "Invalid or expired OTP";
+                }
             }
         }
     }
@@ -115,6 +127,7 @@ require_once '../../template/nav.php';
                     <?php if (!isset($showOtpForm)): ?>
                         <!-- Step 1: Phone Number -->
                         <form method="POST" action="">
+                            <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($_SESSION['csrf_token']); ?>">
                             <input type="hidden" name="step" value="1">
                             
                             <div class="mb-3">
@@ -146,6 +159,7 @@ require_once '../../template/nav.php';
                         <?php endif; ?>
 
                         <form method="POST" action="">
+                            <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($_SESSION['csrf_token']); ?>">
                             <input type="hidden" name="step" value="2">
                             <input type="hidden" name="phone" value="<?php echo htmlspecialchars($phone); ?>">
 
@@ -168,6 +182,7 @@ require_once '../../template/nav.php';
 
                         <!-- Regenerate OTP Form -->
                         <form method="POST" action="" class="mb-2">
+                            <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($_SESSION['csrf_token']); ?>">
                             <input type="hidden" name="action" value="regenerate_otp">
                             <input type="hidden" name="phone" value="<?php echo htmlspecialchars($phone); ?>">
                             <button type="submit" class="btn btn-outline-warning w-100">
