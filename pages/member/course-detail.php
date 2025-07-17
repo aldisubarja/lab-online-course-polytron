@@ -169,8 +169,8 @@ require_once '../../template/nav.php';
                     <h6><i class="fas fa-building"></i> About the Company</h6>
                 </div>
                 <div class="card-body">
-                    <h6><?php echo htmlspecialchars($course['company_name']); ?></h6>
-                    <p class="small"><?php echo htmlspecialchars($course['company_description']) ?: 'No description available.'; ?></p>
+                    <h6><?php echo isset($course['company_name']) ? htmlspecialchars($course['company_name']) : 'Unknown Company'; ?></h6>
+                    <p class="small"><?php echo isset($course['company_description']) && $course['company_description'] ? htmlspecialchars($course['company_description']) : 'No description available.'; ?></p>
                 </div>
             </div>
             
