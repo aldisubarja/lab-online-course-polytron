@@ -10,13 +10,14 @@ if (!isLoggedIn() || !requireRole(['company'])) {
 
 $conn = getConnection();
 
+$company_id = $_SESSION['user_company_id'];
+
 // Get all companies
-$companiesQuery = "SELECT c.*, u.name as owner_name, u.email, u.phone,
-                   (SELECT COUNT(*) FROM courses WHERE company_id = c.id) as course_count
-                   FROM companies c 
-                   JOIN users u ON c.user_id = u.id 
-                   ORDER BY c.created_at DESC";
-$companies = $conn->query($companiesQuery);
+$companiesQuery = "SELECT c.*, u.name as owner_name, u.email, u.phone, (SELECT COUNT(*) FROM courses WHERE company_id = c.id) as course_count FROM companies c  JOIN users u ON c.user_id = u.id  WHERE c.id = ? ORDER BY c.created_at DESC";
+$stmt = $conn->prepare($companiesQuery);
+$stmt->bind_param('i', $company_id);
+$stmt->execute();
+$companies = $stmt->get_result();
 
 $pageTitle = "Manage Companies - Admin";
 require_once '../../template/header.php';
