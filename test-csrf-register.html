@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CSRF Test - Register Form</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        .test-section {
+            margin-bottom: 2rem;
+            padding: 1.5rem;
+            border-radius: 8px;
+        }
+        .attack-form {
+            background-color: #fee;
+            border: 2px solid #dc3545;
+        }
+        .legitimate-form {
+            background-color: #efe;
+            border: 2px solid #28a745;
+        }
+        .info-box {
+            background-color: #e7f3ff;
+            border: 2px solid #007bff;
+        }
+    </style>
+</head>
+<body>
+    <div class="container mt-5">
+        <div class="row">
+            <div class="col-12">
+                <h1 class="text-center mb-4">
+                    <i class="fas fa-shield-alt"></i> CSRF Attack Test - Register Form
+                </h1>
+                
+                <!-- Information Section -->
+                <div class="test-section info-box">
+                    <h3><i class="fas fa-info-circle"></i> Test Information</h3>
+                    <p><strong>Target:</strong> <code>http://localhost:8005/pages/auth/register.php</code></p>
+                    <p><strong>Purpose:</strong> Test CSRF protection on the registration form</p>
+                    <p><strong>Expected Result:</strong> The form without CSRF token should be rejected</p>
+                    
+                    <div class="alert alert-warning">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        <strong>Note:</strong> This is for educational purposes only. Make sure you have permission to test this application.
+                    </div>
+                </div>
+
+                <!-- Attack Form (Without CSRF Token) -->
+                <div class="test-section attack-form">
+                    <h3><i class="fas fa-bug"></i> CSRF Attack Form (Without Token)</h3>
+                    <p class="text-danger">
+                        <strong>This form simulates a CSRF attack by not including the CSRF token.</strong>
+                    </p>
+                    
+                    <form action="http://localhost:8005/pages/auth/register.php" method="POST" target="_blank">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="attack_name" class="form-label">Full Name</label>
+                                    <input type="text" class="form-control" id="attack_name" name="name" 
+                                           value="CSRF Attack User" required>
+                                </div>
+                                
+                                <div class="mb-3">
+                                    <label for="attack_email" class="form-label">Email</label>
+                                    <input type="email" class="form-control" id="attack_email" name="email" 
+                                           value="csrf.attack@evil.com" required>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="attack_phone" class="form-label">Phone Number</label>
+                                    <input type="text" class="form-control" id="attack_phone" name="phone" 
+                                           value="081234567890" required>
+                                </div>
+                                
+                                <div class="mb-3">
+                                    <label for="attack_role" class="form-label">Role</label>
+                                    <select class="form-select" id="attack_role" name="role">
+                                        <option value="member">Member</option>
+                                        <option value="company">Company</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <button type="submit" class="btn btn-danger">
+                            <i class="fas fa-skull-crossbones"></i> Submit CSRF Attack
+                        </button>
+                    </form>
+                </div>
+
+                <!-- Attack Form with Invalid CSRF Token -->
+                <div class="test-section attack-form">
+                    <h3><i class="fas fa-user-secret"></i> CSRF Attack Form (Invalid Token)</h3>
+                    <p class="text-danger">
+                        <strong>This form includes an invalid CSRF token to test token validation.</strong>
+                    </p>
+                    
+                    <form action="http://localhost:8005/pages/auth/register.php" method="POST" target="_blank">
+                        <input type="hidden" name="csrf_token" value="invalid_token_12345">
+                        
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="invalid_name" class="form-label">Full Name</label>
+                                    <input type="text" class="form-control" id="invalid_name" name="name" 
+                                           value="Invalid Token User" required>
+                                </div>
+                                
+                                <div class="mb-3">
+                                    <label for="invalid_email" class="form-label">Email</label>
+                                    <input type="email" class="form-control" id="invalid_email" name="email" 
+                                           value="invalid.token@evil.com" required>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="invalid_phone" class="form-label">Phone Number</label>
+                                    <input type="text" class="form-control" id="invalid_phone" name="phone" 
+                                           value="081999888777" required>
+                                </div>
+                                
+                                <div class="mb-3">
+                                    <label for="invalid_role" class="form-label">Role</label>
+                                    <select class="form-select" id="invalid_role" name="role">
+                                        <option value="member">Member</option>
+                                        <option value="company">Company</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <button type="submit" class="btn btn-warning">
+                            <i class="fas fa-exclamation-triangle"></i> Submit with Invalid Token
+                        </button>
+                    </form>
+                </div>
+
+                <!-- Legitimate Form Reference -->
+                <div class="test-section legitimate-form">
+                    <h3><i class="fas fa-check-shield"></i> Legitimate Registration</h3>
+                    <p class="text-success">
+                        <strong>For comparison, use the legitimate registration form which includes proper CSRF protection.</strong>
+                    </p>
+                    
+                    <a href="http://localhost:8005/pages/auth/register.php" class="btn btn-success" target="_blank">
+                        <i class="fas fa-external-link-alt"></i> Open Legitimate Registration Form
+                    </a>
+                </div>
+
+                <!-- Test Instructions -->
+                <div class="test-section info-box">
+                    <h3><i class="fas fa-clipboard-list"></i> Test Instructions</h3>
+                    <ol>
+                        <li><strong>First Test:</strong> Try the "CSRF Attack Form (Without Token)" - this should fail with a CSRF error</li>
+                        <li><strong>Second Test:</strong> Try the "CSRF Attack Form (Invalid Token)" - this should also fail with a CSRF error</li>
+                        <li><strong>Third Test:</strong> Use the legitimate registration form - this should work normally</li>
+                        <li><strong>Check Results:</strong> Verify that only the legitimate form succeeds in registering a user</li>
+                    </ol>
+                    
+                    <div class="alert alert-info mt-3">
+                        <i class="fas fa-lightbulb"></i>
+                        <strong>Expected Behavior:</strong> The application should reject forms without valid CSRF tokens and show the error message: "CSRF token is invalid or missing."
+                    </div>
+                </div>
+
+                <!-- Auto-submit Attack Simulation -->
+                <div class="test-section attack-form">
+                    <h3><i class="fas fa-robot"></i> Auto-Submit Attack Simulation</h3>
+                    <p class="text-danger">
+                        <strong>This demonstrates how a malicious website could automatically submit forms without user knowledge.</strong>
+                    </p>
+                    
+                    <button class="btn btn-danger" onclick="autoSubmitAttack()">
+                        <i class="fas fa-play"></i> Start Auto-Submit Attack
+                    </button>
+                    
+                    <div id="auto-attack-status" class="mt-2"></div>
+                    
+                    <!-- Hidden form for auto-submit -->
+                    <form id="autoAttackForm" action="http://localhost:8005/pages/auth/register.php" method="POST" target="_blank" style="display: none;">
+                        <input type="text" name="name" value="Auto Attack User">
+                        <input type="email" name="email" value="auto.attack@evil.com">
+                        <input type="text" name="phone" value="081666555444">
+                        <input type="text" name="role" value="member">
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        function autoSubmitAttack() {
+            const statusDiv = document.getElementById('auto-attack-status');
+            statusDiv.innerHTML = '<div class="alert alert-warning"><i class="fas fa-spinner fa-spin"></i> Attempting auto-submit attack in 3 seconds...</div>';
+            
+            setTimeout(() => {
+                statusDiv.innerHTML = '<div class="alert alert-danger"><i class="fas fa-rocket"></i> Auto-submit attack launched! Check if it was blocked by CSRF protection.</div>';
+                document.getElementById('autoAttackForm').submit();
+            }, 3000);
+        }
+
+        // Warning message on page load
+        window.onload = function() {
+            if (!confirm('This page contains CSRF attack simulations for educational purposes. Do you want to continue?')) {
+                window.close();
+            }
+        };
+    </script>
+</body>
+</html>
