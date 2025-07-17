@@ -1,5 +1,6 @@
 <?php
 require_once '../../config/env.php';
+require_once '../../module/logger.php';
 
 startSession();
 
@@ -48,6 +49,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     }
                     
                     $success = "Registration successful! You can now login.";
+                    logToFile($phone . "Registered.");
                 } else {
                     $error = "Registration failed: " . $stmt->error;
                 }
