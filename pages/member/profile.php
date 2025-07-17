@@ -7,7 +7,7 @@ if (empty($_SESSION['csrf_token'])) {
     $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
 }
 
-if (!isLoggedIn() || !requireRole(['member'])) {
+if (!isLoggedIn() || !requireRole(['member','company'])) {
     header('Location: ' . BASE_URL . '/pages/auth/login.php');
     exit;
 }

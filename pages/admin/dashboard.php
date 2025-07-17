@@ -4,7 +4,7 @@ require_once '../../config/env.php';
 startSession();
 
 // Vulnerable: No proper admin check
-if (!isLoggedIn()) {
+if (!isLoggedIn() || !requireRole(['company'])) {
     header('Location: ' . BASE_URL . '/pages/auth/login.php');
     exit;
 }
@@ -51,12 +51,6 @@ require_once '../../template/nav.php';
 ?>
 
 <div class="container mt-4">
-    <!-- Warning Banner -->
-    <div class="alert alert-danger">
-        <i class="fas fa-exclamation-triangle"></i> 
-        <strong>Security Warning:</strong> This admin panel has no access control! Anyone can access it.
-    </div>
-
     <!-- Welcome Section -->
     <div class="row mb-4">
         <div class="col-12">
