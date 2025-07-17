@@ -102,24 +102,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['use_api'])) {
 
             $updateQuery = "UPDATE users SET " . implode(', ', $setParts) . " WHERE id = ?";
 
-            $stmt = $conn->prepare($updateQuery);
-            if ($stmt) {
-                $stmt->bind_param($types, ...$params);
-                
-                try {
+            try {
+                $stmt = $conn->prepare($updateQuery);
+                if ($stmt) {
+                    $stmt->bind_param($types, ...$params);
+                    
                     if ($stmt->execute()) {
                         $success = "Profile updated successfully!";
                         $currentUser = getCurrentUser();
                     } else {
                         $errors[] = "Failed to update profile";
                     }
-                } catch (Exception $e) {
+                    
+                    $stmt->close();
+                } else {
                     $errors[] = "Failed to update profile";
                 }
-                
-                $stmt->close();
-            } else {
-                $errors[] = "Failed to prepare statement";
+            } catch (Exception $e) {
+                $errors[] = "Failed to update profile";
+            } catch (mysqli_sql_exception $e) {
+                $errors[] = "Failed to update profile";
+            } catch (Throwable $e) {
+                $errors[] = "Failed to update profile";
             }
         }
     }
@@ -198,8 +202,10 @@ require_once '../../template/nav.php';
                                 
                                 <div class="mb-3">
                                     <label for="phone" class="form-label">Phone Number</label>
-                                    <input type="text" class="form-control" id="phone" name="phone" 
-                                           value="<?php echo htmlspecialchars($currentUser['phone'], ENT_QUOTES, 'UTF-8'); ?>" required>
+                                    <input type="tel" class="form-control" id="phone" name="phone" 
+                                           value="<?php echo htmlspecialchars($currentUser['phone'], ENT_QUOTES, 'UTF-8'); ?>" 
+                                           pattern="[0-9]+" required
+                                           oninput="this.value = this.value.replace(/[^0-9]/g, '')">
                                 </div>
                                 
                                 <div class="mb-3">
