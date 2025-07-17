@@ -30,31 +30,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         $action = $_POST['action'];
     
         if ($action === 'create') {
-            $title = $_POST['title'] ?? '';
-            $description = $_POST['description'] ?? '';
+            $title = isset($_POST['title']) ? htmlspecialchars(trim($_POST['title']), ENT_QUOTES, 'UTF-8') : '';
+            $description = isset($_POST['description']) ? htmlspecialchars(trim($_POST['description']), ENT_QUOTES, 'UTF-8') : '';
             $price = $_POST['price'] ?? 0;
             
-            // Vulnerable: No input validation
             if (!empty($title)) {
-                // Vulnerable: Create slug without validation
-                $slug = strtolower(str_replace(' ', '-', $title));
+                $slug = strtolower(preg_replace('/[^a-z0-9\-]+/', '-', str_replace(' ', '-', $title)));
                 
-                // Vulnerable: SQL injection
-                $insertQuery = "INSERT INTO courses (company_id, title, slug, description, price) 
-                            VALUES (" . $company['id'] . ", '$title', '$slug', '$description', $price)";
+                $stmt = $conn->prepare("INSERT INTO courses (company_id, title, slug, description, price) VALUES (?, ?, ?, ?, ?)");
+                $stmt->bind_param("isssd", $company['id'], $title, $slug, $description, $price);
                 
-                if ($conn->query($insertQuery)) {
+                if ($stmt->execute()) {
                     $success = "Course created successfully!";
                 } else {
-                    $error = "Failed to create course: " . $conn->error;
+                    $error = "Failed to create course";
                 }
+                $stmt->close();
             } else {
                 $error = "Title is required";
             }
         } elseif ($action === 'update') {
             $courseId = $_POST['course_id'] ?? 0;
-            $title = $_POST['title'] ?? '';
-            $description = $_POST['description'] ?? '';
+            $title = isset($_POST['title']) ? htmlspecialchars(trim($_POST['title']), ENT_QUOTES, 'UTF-8') : '';
+            $description = isset($_POST['description']) ? htmlspecialchars(trim($_POST['description']), ENT_QUOTES, 'UTF-8') : '';
             $price = $_POST['price'] ?? 0;
             
             // Vulnerable: No authorization check - could update other company's courses
