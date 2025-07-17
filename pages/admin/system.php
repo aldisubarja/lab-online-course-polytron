@@ -10,18 +10,24 @@ if (!isLoggedIn() || !requireRole(['company'])) {
 
 $conn = getConnection();
 
+if (empty($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+}
+
+
 // Vulnerable: No CSRF protection for system actions
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
+    $csrf_token = $_POST['csrf_token'] ?? '';
     
-    if ($action === 'clear_sessions') {
-        // Vulnerable: SQL injection
+    if (!$csrf_token || $csrf_token !== $_SESSION['csrf_token']) {
+        $error = 'CSRF token is invalid or missing.';
+    }elseif ($action === 'clear_sessions') {
         $clearQuery = "DELETE FROM sessions";
         if ($conn->query($clearQuery)) {
             $success = "All sessions cleared!";
         }
     } elseif ($action === 'reset_otp') {
-        // Vulnerable: SQL injection
         $resetQuery = "UPDATE users SET otp_code = NULL, otp_expires = NULL";
         if ($conn->query($resetQuery)) {
             $success = "All OTP codes reset!";
@@ -99,6 +105,8 @@ require_once '../../template/nav.php';
                 <div class="card-body">
                     <!-- Vulnerable: No CSRF protection -->
                     <form method="POST" class="mb-3">
+                        <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($_SESSION['csrf_token']); ?>">
+                            
                         <input type="hidden" name="action" value="clear_sessions">
                         <button type="submit" class="btn btn-warning w-100" 
                                 onclick="return confirm('Clear all user sessions?')">
@@ -107,16 +115,14 @@ require_once '../../template/nav.php';
                     </form>
 
                     <form method="POST" class="mb-3">
+                        <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($_SESSION['csrf_token']); ?>">
+                            
                         <input type="hidden" name="action" value="reset_otp">
                         <button type="submit" class="btn btn-info w-100"
                                 onclick="return confirm('Reset all OTP codes?')">
                             <i class="fas fa-key"></i> Reset All OTP Codes
                         </button>
                     </form>
-
-                    <a href="?phpinfo=1" class="btn btn-danger w-100" target="_blank">
-                        <i class="fas fa-code"></i> View PHP Info (Dangerous!)
-                    </a>
                 </div>
             </div>
         </div>
@@ -144,32 +150,6 @@ require_once '../../template/nav.php';
         </div>
     </div>
 
-    <!-- Vulnerability Warning -->
-    <div class="row mt-4">
-        <div class="col-12">
-            <div class="card border-danger">
-                <div class="card-header bg-danger text-white">
-                    <h6><i class="fas fa-bug"></i> System Vulnerabilities</h6>
-                </div>
-                <div class="card-body">
-                    <ul class="small mb-0">
-                        <li>No CSRF protection on system actions</li>
-                        <li>SQL injection in all database operations</li>
-                        <li>Exposed PHP info and system details</li>
-                        <li>No proper admin authentication</li>
-                        <li>Debug mode enabled in production</li>
-                    </ul>
-                </div>
-            </div>
-        </div>
-    </div>
 </div>
-
-<!-- Vulnerable: Expose PHP info -->
-<?php if (isset($_GET['phpinfo'])): ?>
-    <div style="margin-top: 50px;">
-        <?php phpinfo(); ?>
-    </div>
-<?php endif; ?>
 
 <?php require_once '../../template/footer.php'; ?>

@@ -10,45 +10,80 @@ if (!isLoggedIn() || !requireRole(['company'])) {
 
 $conn = getConnection();
 
-// Vulnerable: No CSRF protection for user actions
 if (isset($_GET['action']) && isset($_GET['user_id'])) {
     $action = $_GET['action'];
     $userId = $_GET['user_id'];
     
-    // Vulnerable: SQL injection
     if ($action === 'delete') {
-        $deleteQuery = "DELETE FROM users WHERE id = $userId";
-        if ($conn->query($deleteQuery)) {
+        // Prepare the statement
+        $stmt = $conn->prepare("DELETE FROM users WHERE id = ?");
+        if (!$stmt) {
+            throw new Exception("Prepare failed: " . $conn->error);
+        }
+        // Bind the integer parameter
+        $stmt->bind_param("i", $userId);
+        
+        // Execute and check
+        if ($stmt->execute()) {
             $success = "User deleted successfully!";
+        } else {
+            $error = "Delete failed: " . $stmt->error;
         }
+        $stmt->close();
+
     } elseif ($action === 'toggle_verify') {
-        $toggleQuery = "UPDATE users SET is_verified = NOT is_verified WHERE id = $userId";
-        if ($conn->query($toggleQuery)) {
-            $success = "User verification status updated!";
+        $stmt = $conn->prepare("UPDATE users SET is_verified = NOT is_verified WHERE id = ?");
+        if (!$stmt) {
+            throw new Exception("Prepare failed: " . $conn->error);
         }
+        $stmt->bind_param("i", $userId);
+        
+        if ($stmt->execute()) {
+            $success = "User verification status updated!";
+        } else {
+            $error = "Toggle failed: " . $stmt->error;
+        }
+        $stmt->close();
     }
 }
 
-// Get all users with search
-$search = $_GET['search'] ?? '';
-$role = $_GET['role'] ?? '';
+// Build search query safely:
+$searchTerm = trim($_GET['search'] ?? '');
+$roleTerm   = trim($_GET['role'] ?? '');
+$search = trim($_GET['search'] ?? '');
+$sql  = "SELECT u.*, c.company_name
+         FROM users u
+         LEFT JOIN companies c ON u.id = c.user_id
+         WHERE 1=1";
+$params = [];
+$types  = '';
 
-$usersQuery = "SELECT u.*, c.company_name FROM users u 
-               LEFT JOIN companies c ON u.id = c.user_id 
-               WHERE 1=1";
-
-if ($search) {
-    // Vulnerable: SQL injection
-    $usersQuery .= " AND (u.name LIKE '%$search%' OR u.email LIKE '%$search%' OR u.phone LIKE '%$search%')";
+// If searching:
+if ($searchTerm !== '') {
+    $sql .= " AND (u.name LIKE ? OR u.email LIKE ? OR u.phone LIKE ?)";
+    $like = "%{$searchTerm}%";
+    // bind the same value three times
+    $params[] = $like;
+    $params[] = $like;
+    $params[] = $like;
+    $types .= 'sss';
 }
 
-if ($role) {
-    // Vulnerable: SQL injection
-    $usersQuery .= " AND u.role = '$role'";
+if ($roleTerm !== '') {
+    $sql .= " AND u.role = ?";
+    $params[] = $roleTerm;
+    $types .= 's';
 }
 
-$usersQuery .= " ORDER BY u.created_at DESC";
-$users = $conn->query($usersQuery);
+$sql .= " ORDER BY u.created_at DESC";
+
+$stmt = $conn->prepare($sql);
+if ($types !== '') {
+    // dynamic param binding
+    $stmt->bind_param($types, ...$params);
+}
+$stmt->execute();
+$users = $stmt->get_result();
 
 $pageTitle = "Manage Users - Admin";
 require_once '../../template/header.php';
