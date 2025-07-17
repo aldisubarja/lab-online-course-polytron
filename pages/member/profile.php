@@ -3,6 +3,10 @@ require_once '../../config/env.php';
 
 startSession();
 
+if (empty($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+}
+
 if (!isLoggedIn()) {
     header('Location: ' . BASE_URL . '/pages/auth/login.php');
     exit;
@@ -11,80 +15,83 @@ if (!isLoggedIn()) {
 $currentUser = getCurrentUser();
 $conn = getConnection();
 
-// Vulnerable: No CSRF protection
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['use_api'])) {
-    
-    // Fallback to traditional form processing if API fails
-    $updateFields = [];
-    $allowedFields = ['name', 'email', 'phone', 'role', 'avatar']; // role should not be user-editable!
+    $csrf_token = $_POST['csrf_token'] ?? '';
+    if (!$csrf_token || $csrf_token !== $_SESSION['csrf_token']) {
+        $errors[] = "CSRF token is invalid or missing.";
+    }else{
+        // Fallback to traditional form processing if API fails
+        $updateFields = [];
+        $allowedFields = ['name', 'email', 'phone', 'role', 'avatar']; // role should not be user-editable!
 
-    foreach ($_POST as $key => $value) {
-        if (in_array($key, $allowedFields)) {
-            $updateFields[$key] = $value;
+        foreach ($_POST as $key => $value) {
+            if (in_array($key, $allowedFields)) {
+                $updateFields[$key] = $value;
+            }
         }
-    }
 
-    $errors = [];
+        $errors = [];
 
-    // Vulnerable: No input validation and XSS
-    if (empty($updateFields['name'])) {
-        $errors[] = "Name is required";
-    }
+        // Vulnerable: No input validation and XSS
+        if (empty($updateFields['name'])) {
+            $errors[] = "Name is required";
+        }
 
-    if (empty($updateFields['email'])) {
-        $errors[] = "Email is required";
-    }
+        if (empty($updateFields['email'])) {
+            $errors[] = "Email is required";
+        }
 
-    if (empty($updateFields['phone'])) {
-        $errors[] = "Phone is required";
-    }
-    
-    // Handle file upload
-    if (isset($_FILES['avatar']) && $_FILES['avatar']['error'] === UPLOAD_ERR_OK) {
-        // Vulnerable: No file type validation
-        // Vulnerable: No file size limits
-        // Vulnerable: Arbitrary file upload
-
-        $fileName = $_FILES['avatar']['name'];
-        $targetDir = 'uploads/avatars/';
-
-        // Vulnerable: Directory traversal
-        $targetFile = $targetDir . basename($fileName);
+        if (empty($updateFields['phone'])) {
+            $errors[] = "Phone is required";
+        }
         
-        // Create directory if not exists
-        if (!file_exists($targetDir)) {
-            mkdir($targetDir, 0777, true); // Vulnerable: Permissive permissions
-        }
+        // Handle file upload
+        if (isset($_FILES['avatar']) && $_FILES['avatar']['error'] === UPLOAD_ERR_OK) {
+            // Vulnerable: No file type validation
+            // Vulnerable: No file size limits
+            // Vulnerable: Arbitrary file upload
 
-        if (move_uploaded_file($_FILES['avatar']['tmp_name'], $targetFile)) {
-            $updateFields['avatar'] = $targetFile;
-        } else {
-            $errors[] = "Failed to upload avatar";
-        }
-    }
+            $fileName = $_FILES['avatar']['name'];
+            $targetDir = 'uploads/avatars/';
 
-    if (empty($errors)) {
-        // Vulnerable: Mass assignment + SQL injection
-        $setParts = [];
-        foreach ($updateFields as $field => $value) {
-            // Vulnerable: No escaping, direct insertion into SQL
-            $setParts[] = "$field = '$value'";
-        }
-
-        $updateQuery = "UPDATE users SET " . implode(', ', $setParts) . " WHERE id = " . $_SESSION['user_id'];
-
-        if ($conn->query($updateQuery)) {
-            $success = "Profile updated successfully!";
-
-            // Show what was actually updated (vulnerable: information disclosure)
-            if (isset($updateFields['role'])) {
-                $success .= " Role changed to: " . $updateFields['role'];
+            // Vulnerable: Directory traversal
+            $targetFile = $targetDir . basename($fileName);
+            
+            // Create directory if not exists
+            if (!file_exists($targetDir)) {
+                mkdir($targetDir, 0777, true); // Vulnerable: Permissive permissions
             }
 
-            // Refresh user data
-            $currentUser = getCurrentUser();
-        } else {
-            $errors[] = "Failed to update profile: " . $conn->error;
+            if (move_uploaded_file($_FILES['avatar']['tmp_name'], $targetFile)) {
+                $updateFields['avatar'] = $targetFile;
+            } else {
+                $errors[] = "Failed to upload avatar";
+            }
+        }
+
+        if (empty($errors)) {
+            // Vulnerable: Mass assignment + SQL injection
+            $setParts = [];
+            foreach ($updateFields as $field => $value) {
+                // Vulnerable: No escaping, direct insertion into SQL
+                $setParts[] = "$field = '$value'";
+            }
+
+            $updateQuery = "UPDATE users SET " . implode(', ', $setParts) . " WHERE id = " . $_SESSION['user_id'];
+
+            if ($conn->query($updateQuery)) {
+                $success = "Profile updated successfully!";
+
+                // Show what was actually updated (vulnerable: information disclosure)
+                if (isset($updateFields['role'])) {
+                    $success .= " Role changed to: " . $updateFields['role'];
+                }
+
+                // Refresh user data
+                $currentUser = getCurrentUser();
+            } else {
+                $errors[] = "Failed to update profile: " . $conn->error;
+            }
         }
     }
 }
@@ -121,8 +128,8 @@ require_once '../../template/nav.php';
                         </div>
                     <?php endif; ?>
                     
-                    <!-- Vulnerable: No CSRF token -->
                     <form id="profileForm" method="POST" enctype="multipart/form-data">
+                        <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($_SESSION['csrf_token']); ?>">                        
                         <div class="row">
                             <div class="col-md-4 text-center mb-3">
                                 <!-- Current Avatar -->
