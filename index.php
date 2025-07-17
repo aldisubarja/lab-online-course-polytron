@@ -26,10 +26,9 @@ require_once 'template/nav.php';
                 <h1 class="display-4">Welcome to VulnCourse Platform</h1>
                 <p class="lead">Learn cybersecurity through hands-on vulnerable applications. This platform intentionally contains security flaws for educational purposes.</p>
                 
-                <!-- Vulnerable: XSS through GET parameter -->
                 <?php if (isset($_GET['welcome'])): ?>
                     <div class="alert alert-info">
-                        <?php echo $_GET['welcome']; ?>
+                        <?php echo htmlspecialchars($_GET['welcome']); ?>
                     </div>
                 <?php endif; ?>
                 
@@ -47,10 +46,9 @@ require_once 'template/nav.php';
         <div class="col-md-8 mx-auto">
             <form method="GET" action="">
                 <div class="input-group">
-                    <!-- Vulnerable: XSS in search value -->
                     <input type="text" class="form-control" name="search" 
                            placeholder="Search courses..." 
-                           value="<?php echo $oriSearchQuery; ?>">
+                           value="<?php echo htmlspecialchars($oriSearchQuery); ?>">
                     <button class="btn btn-primary" type="submit">
                         <i class="fas fa-search"></i> Search
                     </button>
@@ -75,20 +73,18 @@ require_once 'template/nav.php';
                         <img src="https://images.pexels.com/photos/1181671/pexels-photo-1181671.jpeg?auto=compress&cs=tinysrgb&w=400" 
                              class="card-img-top" alt="Course thumbnail" style="height: 200px; object-fit: cover;">
                         <div class="card-body d-flex flex-column">
-                            <!-- Vulnerable: XSS in course title -->
-                            <h5 class="card-title"><?php echo $course['title']; ?></h5>
+                            <h5 class="card-title"><?php echo htmlspecialchars($course['title']); ?></h5>
                             
-                            <!-- Vulnerable: XSS in description -->
-                            <p class="card-text flex-grow-1"><?php echo substr($course['description'], 0, 100) . '...'; ?></p>
+                            <p class="card-text flex-grow-1"><?php echo substr(htmlspecialchars($course['description']), 0, 100) . '...'; ?></p>
                             
                             <div class="mt-auto">
                                 <div class="d-flex justify-content-between align-items-center mb-2">
-                                    <small class="text-muted">By <?php echo $course['company_name']; ?></small>
-                                    <span class="badge bg-success">$<?php echo number_format($course['price'], 2); ?></span>
+                                    <small class="text-muted">By <?php echo htmlspecialchars($course['company_name']); ?></small>
+                                    <span class="badge bg-success">$<?php echo number_format(htmlspecialchars($course['price']), 2); ?></span>
                                 </div>
                                 
                                 <!-- Vulnerable: Direct object reference -->
-                                <a href="<?php echo BASE_URL; ?>/pages/member/course-detail.php?id=<?php echo $course['id']; ?>"
+                                <a href="<?php echo BASE_URL; ?>/pages/member/course-detail.php?id=<?php echo htmlspecialchars($course['id']); ?>"
                                    class="btn btn-primary">
                                     <i class="fas fa-eye"></i> View Details
                                 </a>

@@ -28,7 +28,6 @@ if (SHOW_ERRORS) {
     ini_set('display_errors', 1);
 }
 
-// Vulnerable database connection with no error handling
 function getConnection() {
     static $connection = null;
 
@@ -51,14 +50,12 @@ function getConnection() {
     return $connection;
 }
 
-// Vulnerable session management
 function startSession() {
     // Only configure session settings if no session is active and headers not sent
     if (session_status() === PHP_SESSION_NONE && !headers_sent()) {
-        // Vulnerable: Weak session configuration
-        ini_set('session.cookie_httponly', 1); // XSS vulnerable
-        ini_set('session.cookie_secure', 1);   // Not HTTPS only
-        ini_set('session.use_strict_mode', 1); // Session fixation vulnerable
+        ini_set('session.cookie_httponly', 1); // 
+        ini_set('session.cookie_secure', 1);   // 
+        ini_set('session.use_strict_mode', 1); //
         session_start();
     } elseif (session_status() === PHP_SESSION_NONE && headers_sent()) {
         // If headers already sent (e.g., command line), just start session without ini_set
@@ -66,21 +63,20 @@ function startSession() {
     }
 }
 
-// Vulnerable: No CSRF protection
 function isLoggedIn() {
     return isset($_SESSION['user_id']);
 }
 
-// Vulnerable: No role validation
 function getCurrentUser() {
-    if (!isLoggedIn()) return null;
+    if (!isLoggedIn() || !requireRole(['member','company'])) return null;
     
     $conn = getConnection();
     $userId = $_SESSION['user_id'];
     
-    // Vulnerable: SQL injection
-    $query = "SELECT * FROM users WHERE id = $userId";
-    $result = $conn->query($query);
+    $stmt = $conn->prepare("SELECT users.*, companies.id AS company_id FROM users LEFT JOIN companies ON users.id = companies.user_id WHERE users.id = ?");
+    $stmt->bind_param("i", $userId); // "s" means the parameter is a string
+    $stmt->execute();
+    $result = $stmt->get_result();
     
     return $result ? $result->fetch_assoc() : null;
 }

@@ -56,8 +56,7 @@ require_once '../../template/nav.php';
                                     <?php while ($company = $companies->fetch_assoc()): ?>
                                         <tr>
                                             <td>
-                                                <!-- Vulnerable: XSS in company data -->
-                                                <strong><?php echo $company['company_name']; ?></strong>
+                                                <strong><?php echo htmlspecialchars($company['company_name']); ?></strong>
                                                 <?php if ($company['description']): ?>
                                                     <br><small class="text-muted"><?php echo substr($company['description'], 0, 100) . '...'; ?></small>
                                                 <?php endif; ?>
