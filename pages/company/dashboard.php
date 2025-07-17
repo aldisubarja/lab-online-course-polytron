@@ -4,11 +4,16 @@ require_once '../../module/logger.php';
 
 startSession();
 
-// ✅ Enforce proper authentication and role-based authorization
+if (empty($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+}
+
 if (!isLoggedIn() || !requireRole(['company'])) {
     header('Location: ' . BASE_URL . '/pages/auth/login.php');
     exit;
 }
+
+$currentUser = getCurrentUser();
 
 $conn = getConnection();
 $userId = $_SESSION['user_id'];
@@ -220,13 +225,11 @@ require_once '../../template/nav.php';
                                 <tbody>
                                     <?php while ($enrollment = $recentEnrollments->fetch_assoc()): ?>
                                         <tr>
-                                            <!-- Vulnerable: XSS in student name -->
                                             <td>
-                                                <?php echo $enrollment['student_name']; ?>
+                                                <?php echo htmlspecialchars($enrollment['student_name']); ?>
                                                 <br><small class="text-muted"><?php echo htmlspecialchars($enrollment['email']); ?></small>
                                             </td>
-                                            <!-- Vulnerable: XSS in course title -->
-                                            <td><?php echo $enrollment['title']; ?></td>
+                                            <td><?php echo htmlspecialchars($enrollment['title']); ?></td>
                                             <td>
                                                 <?php
                                                 $statusClass = '';
@@ -249,12 +252,11 @@ require_once '../../template/nav.php';
                                             <td><?php echo date('M d, Y', strtotime($enrollment['enrolled_at'])); ?></td>
                                             <td>
                                                 <?php if ($enrollment['status'] === 'pending'): ?>
-                                                    <!-- Vulnerable: No CSRF protection -->
-                                                    <a href="?action=approve&enrollment_id=<?php echo $enrollment['id']; ?>" 
+                                                    <a href="?action=approve&enrollment_id=<?php echo $enrollment['id']; ?>&csrf_token=<?php echo $_SESSION['csrf_token']; ?>" 
                                                        class="btn btn-sm btn-success">
                                                         <i class="fas fa-check"></i> Approve
                                                     </a>
-                                                    <a href="?action=reject&enrollment_id=<?php echo $enrollment['id']; ?>" 
+                                                    <a href="?action=reject&enrollment_id=<?php echo $enrollment['id']; ?>&csrf_token=<?php echo $_SESSION['csrf_token']; ?>" 
                                                        class="btn btn-sm btn-danger">
                                                         <i class="fas fa-times"></i> Reject
                                                     </a>
@@ -284,21 +286,28 @@ require_once '../../template/nav.php';
         </div>
     </div>
 
-    <!-- Vulnerable: Handle approval/rejection without proper validation -->
     <?php
     if (isset($_GET['action']) && isset($_GET['enrollment_id'])) {
         $action = $_GET['action'];
         $enrollmentId = $_GET['enrollment_id'];
         
-        // Vulnerable: SQL injection and no CSRF protection
-        if ($action === 'approve') {
-            $updateQuery = "UPDATE enrollments SET status = 'confirmed' WHERE id = $enrollmentId";
-            $conn->query($updateQuery);
-            echo "<script>alert('Enrollment approved!'); window.location.href = window.location.pathname;</script>";
-        } elseif ($action === 'reject') {
-            $updateQuery = "UPDATE enrollments SET status = 'rejected' WHERE id = $enrollmentId";
-            $conn->query($updateQuery);
-            echo "<script>alert('Enrollment rejected!'); window.location.href = window.location.pathname;</script>";
+        if (isset($_GET['csrf_token']) &&hash_equals($_SESSION['csrf_token'], $_GET['csrf_token']) && is_numeric($enrollmentId)) 
+        {
+            if ($action === 'approve') {
+                $stmt = $conn->prepare("UPDATE enrollments SET status = 'confirmed' WHERE id = ?");
+                $stmt->bind_param("i", $enrollmentId);
+                $stmt->execute();
+                $stmt->close();
+                echo "<script>alert('Enrollment approved!'); window.location.href = window.location.pathname;</script>";
+            } elseif ($action === 'reject') {
+                $stmt = $conn->prepare("UPDATE enrollments SET status = 'rejected' WHERE id = ?");
+                $stmt->bind_param("i", $enrollmentId);
+                $stmt->execute();
+                $stmt->close();
+                echo "<script>alert('Enrollment rejected!'); window.location.href = window.location.pathname;</script>";
+            }
+        } else {
+            echo "<script>alert('Invalid CSRF token or enrollment ID!'); window.location.href = window.location.pathname;</script>";
         }
     }
     ?>
