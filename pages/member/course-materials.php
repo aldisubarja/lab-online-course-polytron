@@ -3,7 +3,7 @@ require_once '../../config/env.php';
 
 startSession();
 
-if (!isLoggedIn()) {
+if (!isLoggedIn() || !requireRole(['member'])) {
     header('Location: ' . BASE_URL . '/pages/auth/login.php');
     exit;
 }
