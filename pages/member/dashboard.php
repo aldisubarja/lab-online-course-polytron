@@ -1,244 +1,233 @@
 <?php
 require_once '../../config/env.php';
-
 startSession();
 
-// Vulnerable: No proper authorization check
+// — Access control: must be logged in AND have “member” role —
 if (!isLoggedIn() || !requireRole(['member'])) {
     header('Location: ' . BASE_URL . '/pages/auth/login.php');
     exit;
 }
 
 $currentUser = getCurrentUser();
+// Double-check role field in case requireRole is misconfigured:
+if (($currentUser['role'] ?? '') !== 'member') {
+    header('Location: ' . BASE_URL . '/pages/auth/login.php');
+    exit;
+}
 
-// Vulnerable: No role validation
-// Should check if user is actually a member
+$conn   = getConnection();
+$userId = (int)$_SESSION['user_id'];
 
-$conn = getConnection();
+// — 1. Count confirmed enrollments —
+$stmt = $conn->prepare(
+    "SELECT COUNT(*) AS total
+       FROM enrollments
+      WHERE user_id = ?
+        AND status = ?"
+);
+$statusConfirmed = 'confirmed';
+$stmt->bind_param('is', $userId, $statusConfirmed);
+$stmt->execute();
+$enrolledCount = $stmt->get_result()->fetch_assoc()['total'] ?? 0;
+$stmt->close();
 
-// Get user statistics
-$userId = $_SESSION['user_id'];
+// — 2. Count pending payments —
+$stmt = $conn->prepare(
+    "SELECT COUNT(*) AS total
+       FROM enrollments
+      WHERE user_id = ?
+        AND status = ?"
+);
+$statusPending = 'pending';
+$stmt->bind_param('is', $userId, $statusPending);
+$stmt->execute();
+$pendingCount = $stmt->get_result()->fetch_assoc()['total'] ?? 0;
+$stmt->close();
 
-// Vulnerable: SQL injection
-$enrolledQuery = "SELECT COUNT(*) as total FROM enrollments WHERE user_id = $userId AND status = 'confirmed'";
-$enrolledResult = $conn->query($enrolledQuery);
-$enrolledCount = $enrolledResult ? $enrolledResult->fetch_assoc()['total'] : 0;
+// — 3. Fetch 5 most-recent enrollments —
+$stmt = $conn->prepare(
+    "SELECT
+       e.status,
+       e.enrolled_at,
+       c.title,
+       c.slug,
+       comp.company_name
+     FROM enrollments AS e
+     JOIN courses       AS c    ON e.course_id    = c.id
+     JOIN companies     AS comp ON c.company_id    = comp.id
+    WHERE e.user_id = ?
+ ORDER BY e.enrolled_at DESC
+    LIMIT 5"
+);
+$stmt->bind_param('i', $userId);
+$stmt->execute();
+$recentEnrollments = $stmt->get_result();
+$stmt->close();
 
-$pendingQuery = "SELECT COUNT(*) as total FROM enrollments WHERE user_id = $userId AND status = 'pending'";
-$pendingResult = $conn->query($pendingQuery);
-$pendingCount = $pendingResult ? $pendingResult->fetch_assoc()['total'] : 0;
-
-// Get recent enrollments
-$recentQuery = "SELECT e.*, c.title, c.slug, comp.company_name 
-                FROM enrollments e 
-                JOIN courses c ON e.course_id = c.id 
-                JOIN companies comp ON c.company_id = comp.id 
-                WHERE e.user_id = $userId 
-                ORDER BY e.enrolled_at DESC 
-                LIMIT 5";
-$recentEnrollments = $conn->query($recentQuery);
-
-$pageTitle = "Member Dashboard - VulnCourse";
+$pageTitle = "Member Dashboard – VulnCourse";
 require_once '../../template/header.php';
 require_once '../../template/nav.php';
 ?>
 
 <div class="container mt-4">
-    <!-- Welcome Section -->
-    <div class="row mb-4">
-        <div class="col-12">
-            <h1><i class="fas fa-tachometer-alt"></i> Welcome back, <?php echo htmlspecialchars($currentUser['name']); ?>!</h1>
-            <p class="text-muted">Manage your courses and track your learning progress</p>
-        </div>
+  <!-- Welcome -->
+  <div class="row mb-4">
+    <div class="col-12">
+      <h1>
+        <i class="fas fa-tachometer-alt"></i>
+        Welcome back, <?= htmlspecialchars($currentUser['name'], ENT_QUOTES, 'UTF-8') ?>!
+      </h1>
+      <p class="text-muted">
+        Manage your courses and track your learning progress
+      </p>
     </div>
+  </div>
 
-    <!-- Stats Cards -->
-    <div class="row mb-4">
-        <div class="col-md-3">
-            <div class="card bg-primary text-white">
-                <div class="card-body">
-                    <div class="d-flex justify-content-between">
-                        <div>
-                            <h4><?php echo $enrolledCount; ?></h4>
-                            <p class="mb-0">Enrolled Courses</p>
-                        </div>
-                        <div class="align-self-center">
-                            <i class="fas fa-book fa-2x"></i>
-                        </div>
-                    </div>
-                </div>
+  <!-- Stats -->
+  <div class="row mb-4">
+    <?php foreach ([
+      ['count' => $enrolledCount, 'label' => 'Enrolled Courses',  'icon' => 'book',       'bg' => 'primary'],
+      ['count' => $pendingCount,  'label' => 'Pending Payments', 'icon' => 'clock',      'bg' => 'warning'],
+      ['count' => '100%',          'label' => 'Vulnerable Code',  'icon' => 'bug',        'bg' => 'success'],
+      ['count' => '∞',             'label' => 'Security Flaws',   'icon' => 'shield-alt', 'bg' => 'danger'],
+    ] as $stat): ?>
+      <div class="col-md-3">
+        <div class="card bg-<?= $stat['bg'] ?> text-white">
+          <div class="card-body">
+            <div class="d-flex justify-content-between">
+              <div>
+                <h4><?= htmlspecialchars($stat['count'], ENT_QUOTES, 'UTF-8') ?></h4>
+                <p class="mb-0"><?= htmlspecialchars($stat['label'], ENT_QUOTES, 'UTF-8') ?></p>
+              </div>
+              <div class="align-self-center">
+                <i class="fas fa-<?= $stat['icon'] ?> fa-2x"></i>
+              </div>
             </div>
+          </div>
         </div>
-        
-        <div class="col-md-3">
-            <div class="card bg-warning text-white">
-                <div class="card-body">
-                    <div class="d-flex justify-content-between">
-                        <div>
-                            <h4><?php echo $pendingCount; ?></h4>
-                            <p class="mb-0">Pending Payments</p>
-                        </div>
-                        <div class="align-self-center">
-                            <i class="fas fa-clock fa-2x"></i>
-                        </div>
-                    </div>
-                </div>
-            </div>
+      </div>
+    <?php endforeach; ?>
+  </div>
+
+  <!-- Quick Actions -->
+  <div class="row mb-4">
+    <div class="col-12">
+      <div class="card">
+        <div class="card-header">
+          <h5><i class="fas fa-bolt"></i> Quick Actions</h5>
         </div>
-        
-        <div class="col-md-3">
-            <div class="card bg-success text-white">
-                <div class="card-body">
-                    <div class="d-flex justify-content-between">
-                        <div>
-                            <h4>100%</h4>
-                            <p class="mb-0">Vulnerable Code</p>
-                        </div>
-                        <div class="align-self-center">
-                            <i class="fas fa-bug fa-2x"></i>
-                        </div>
-                    </div>
-                </div>
-            </div>
+        <div class="card-body">
+          <div class="row">
+            <?php
+            $actions = [
+              ['url' => '/pages/member/courses.php',     'label' => 'Browse Courses',    'icon' => 'search',       'cls' => 'primary'],
+              ['url' => '/pages/member/my-courses.php',  'label' => 'My Courses',        'icon' => 'play-circle',  'cls' => 'success'],
+              ['url' => '/pages/member/profile.php',     'label' => 'Edit Profile',      'icon' => 'user-edit',    'cls' => 'info'],
+              // leave in your XSS tester if you like, but dashboard will now escape it safely:
+              ['url' => '/?message=<script>alert(1)</script>', 'label' => 'Test XSS', 'icon' => 'bug', 'cls' => 'warning'],
+            ];
+            foreach ($actions as $act): ?>
+              <div class="col-md-3 mb-2">
+                <a href="<?= htmlspecialchars(BASE_URL . $act['url'], ENT_QUOTES, 'UTF-8') ?>"
+                   class="btn btn-outline-<?= $act['cls'] ?> w-100">
+                  <i class="fas fa-<?= $act['icon'] ?>"></i>
+                  <?= htmlspecialchars($act['label'], ENT_QUOTES, 'UTF-8') ?>
+                </a>
+              </div>
+            <?php endforeach; ?>
+          </div>
         </div>
-        
-        <div class="col-md-3">
-            <div class="card bg-danger text-white">
-                <div class="card-body">
-                    <div class="d-flex justify-content-between">
-                        <div>
-                            <h4>∞</h4>
-                            <p class="mb-0">Security Flaws</p>
-                        </div>
-                        <div class="align-self-center">
-                            <i class="fas fa-shield-alt fa-2x"></i>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
+      </div>
     </div>
+  </div>
 
-    <!-- Quick Actions -->
-    <div class="row mb-4">
-        <div class="col-12">
-            <div class="card">
-                <div class="card-header">
-                    <h5><i class="fas fa-bolt"></i> Quick Actions</h5>
-                </div>
-                <div class="card-body">
-                    <div class="row">
-                        <div class="col-md-3 mb-2">
-                            <a href="<?php echo BASE_URL; ?>/pages/member/courses.php" class="btn btn-outline-primary w-100">
-                                <i class="fas fa-search"></i> Browse Courses
-                            </a>
-                        </div>
-                        <div class="col-md-3 mb-2">
-                            <a href="<?php echo BASE_URL; ?>/pages/member/my-courses.php" class="btn btn-outline-success w-100">
-                                <i class="fas fa-play-circle"></i> My Courses
-                            </a>
-                        </div>
-                        <div class="col-md-3 mb-2">
-                            <a href="<?php echo BASE_URL; ?>/pages/member/profile.php" class="btn btn-outline-info w-100">
-                                <i class="fas fa-user-edit"></i> Edit Profile
-                            </a>
-                        </div>
-                        <div class="col-md-3 mb-2">
-                            <!-- Vulnerable: XSS through URL parameter -->
-                            <a href="/?message=<script>alert('XSS from dashboard!')</script>" class="btn btn-outline-warning w-100">
-                                <i class="fas fa-bug"></i> Test XSS
-                            </a>
-                        </div>
-                    </div>
-                </div>
-            </div>
+  <!-- Recent Enrollments -->
+  <div class="row">
+    <div class="col-12">
+      <div class="card">
+        <div class="card-header">
+          <h5><i class="fas fa-history"></i> Recent Enrollments</h5>
         </div>
-    </div>
-
-    <!-- Recent Enrollments -->
-    <div class="row">
-        <div class="col-12">
-            <div class="card">
-                <div class="card-header">
-                    <h5><i class="fas fa-history"></i> Recent Enrollments</h5>
-                </div>
-                <div class="card-body">
-                    <?php if ($recentEnrollments && $recentEnrollments->num_rows > 0): ?>
-                        <div class="table-responsive">
-                            <table class="table table-striped">
-                                <thead>
-                                    <tr>
-                                        <th>Course</th>
-                                        <th>Company</th>
-                                        <th>Status</th>
-                                        <th>Enrolled Date</th>
-                                        <th>Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <?php while ($enrollment = $recentEnrollments->fetch_assoc()): ?>
-                                        <tr>
-                                            <td><?php echo htmlspecialchars($enrollment['title']); ?></td>
-                                            <td><?php echo htmlspecialchars($enrollment['company_name']); ?></td>
-                                            <td>
-                                                <?php
-                                                $statusClass = '';
-                                                switch ($enrollment['status']) {
-                                                    case 'confirmed':
-                                                        $statusClass = 'bg-success';
-                                                        break;
-                                                    case 'pending':
-                                                        $statusClass = 'bg-warning';
-                                                        break;
-                                                    case 'rejected':
-                                                        $statusClass = 'bg-danger';
-                                                        break;
-                                                }
-                                                ?>
-                                                <span class="badge <?php echo $statusClass; ?>">
-                                                    <?php echo ucfirst($enrollment['status']); ?>
-                                                </span>
-                                            </td>
-                                            <td><?php echo date('M d, Y', strtotime($enrollment['enrolled_at'])); ?></td>
-                                            <td>
-                                                <?php if ($enrollment['status'] === 'confirmed'): ?>
-                                                    <!-- Vulnerable: Direct access to materials without proper authorization -->
-                                                    <a href="<?php echo BASE_URL; ?>/pages/member/course-materials.php?slug=<?php echo $enrollment['slug']; ?>"
-                                                       class="btn btn-sm btn-primary">
-                                                        <i class="fas fa-play"></i> Start Learning
-                                                    </a>
-                                                <?php elseif ($enrollment['status'] === 'pending'): ?>
-                                                    <small class="text-muted">Awaiting approval</small>
-                                                <?php else: ?>
-                                                    <small class="text-danger">Payment rejected</small>
-                                                <?php endif; ?>
-                                            </td>
-                                        </tr>
-                                    <?php endwhile; ?>
-                                </tbody>
-                            </table>
-                        </div>
-                        <div class="text-center">
-                            <a href="<?php echo BASE_URL; ?>/pages/member/my-courses.php" class="btn btn-outline-primary">
-                                <i class="fas fa-eye"></i> View All Courses
-                            </a>
-                        </div>
-                    <?php else: ?>
-                        <div class="text-center py-4">
-                            <i class="fas fa-book fa-3x text-muted mb-3"></i>
-                            <h5>No courses yet</h5>
-                            <p class="text-muted">Start your learning journey by browsing our available courses.</p>
-                            <a href="<?php echo BASE_URL; ?>/pages/member/courses.php" class="btn btn-primary">
-                                <i class="fas fa-search"></i> Browse Courses
-                            </a>
-                        </div>
-                    <?php endif; ?>
-                </div>
+        <div class="card-body">
+          <?php if ($recentEnrollments->num_rows > 0): ?>
+            <div class="table-responsive">
+              <table class="table table-striped">
+                <thead>
+                  <tr>
+                    <th>Course</th>
+                    <th>Company</th>
+                    <th>Status</th>
+                    <th>Enrolled Date</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <?php while ($row = $recentEnrollments->fetch_assoc()): ?>
+                    <?php
+                      $safeTitle   = htmlspecialchars($row['title'], ENT_QUOTES, 'UTF-8');
+                      $safeCompany = htmlspecialchars($row['company_name'], ENT_QUOTES, 'UTF-8');
+                      $safeSlug    = urlencode($row['slug']);
+                      $status      = $row['status'];
+                      switch ($status) {
+                        case 'confirmed': $cls = 'success'; break;
+                        case 'pending':   $cls = 'warning'; break;
+                        default:          $cls = 'danger';  break;
+                      }
+                    ?>
+                    <tr>
+                      <td><?= $safeTitle ?></td>
+                      <td><?= $safeCompany ?></td>
+                      <td>
+                        <span class="badge bg-<?= $cls ?>">
+                          <?= ucfirst(htmlspecialchars($status, ENT_QUOTES, 'UTF-8')) ?>
+                        </span>
+                      </td>
+                      <td><?= date('M d, Y', strtotime($row['enrolled_at'])) ?></td>
+                      <td>
+                        <?php if ($status === 'confirmed'): ?>
+                          <a href="<?= htmlspecialchars(BASE_URL . "/pages/member/course-materials.php?slug={$safeSlug}", ENT_QUOTES, 'UTF-8') ?>"
+                             class="btn btn-sm btn-primary">
+                            <i class="fas fa-play"></i> Start Learning
+                          </a>
+                        <?php elseif ($status === 'pending'): ?>
+                          <small class="text-muted">Awaiting approval</small>
+                        <?php else: ?>
+                          <small class="text-danger">Payment rejected</small>
+                        <?php endif; ?>
+                      </td>
+                    </tr>
+                  <?php endwhile; ?>
+                </tbody>
+              </table>
             </div>
+            <div class="text-center">
+              <a href="<?= htmlspecialchars(BASE_URL . '/pages/member/my-courses.php', ENT_QUOTES, 'UTF-8') ?>"
+                 class="btn btn-outline-primary">
+                <i class="fas fa-eye"></i> View All Courses
+              </a>
+            </div>
+          <?php else: ?>
+            <div class="text-center py-4">
+              <i class="fas fa-book fa-3x text-muted mb-3"></i>
+              <h5>No courses yet</h5>
+              <p class="text-muted">Start your learning journey by browsing courses.</p>
+              <a href="<?= htmlspecialchars(BASE_URL . '/pages/member/courses.php', ENT_QUOTES, 'UTF-8') ?>"
+                 class="btn btn-primary">
+                <i class="fas fa-search"></i> Browse Courses
+              </a>
+            </div>
+          <?php endif; ?>
         </div>
+      </div>
     </div>
-
-   
+  </div>
 </div>
+
+<?php if (isset($_GET['message'])): ?>
+  <script>
+    // JSON-encode to safely embed user input in JS
+    alert(<?= json_encode($_GET['message'], JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS) ?>);
+  </script>
+<?php endif; ?>
 
 <?php require_once '../../template/footer.php'; ?>
