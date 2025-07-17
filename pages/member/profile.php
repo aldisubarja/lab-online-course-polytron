@@ -67,7 +67,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['use_api'])) {
                 $errors[] = "File size exceeds 2MB limit.";
             }
 
-            elseif (preg_match('/[^\w\.\-]/', $fileName)) {
+            elseif (preg_match('/[^\w\.\-\s]/', $fileName)) {
                 $errors[] = "Invalid file name.";
             } else {
                 $targetDir = 'uploads/avatars/';
@@ -87,27 +87,39 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['use_api'])) {
         }
 
         if (empty($errors)) {
-            // Vulnerable: Mass assignment + SQL injection
             $setParts = [];
+            $params = [];
+            $types = '';
+
             foreach ($updateFields as $field => $value) {
-                // Vulnerable: No escaping, direct insertion into SQL
-                $setParts[] = "$field = '$value'";
+                $setParts[] = "$field = ?";
+                $params[] = $value;
+                $types .= 's';
             }
 
-            $updateQuery = "UPDATE users SET " . implode(', ', $setParts) . " WHERE id = " . $_SESSION['user_id'];
+            $params[] = $_SESSION['user_id'];
+            $types .= 'i';
 
-            if ($conn->query($updateQuery)) {
-                $success = "Profile updated successfully!";
+            $updateQuery = "UPDATE users SET " . implode(', ', $setParts) . " WHERE id = ?";
 
-                // Show what was actually updated (vulnerable: information disclosure)
-                if (isset($updateFields['role'])) {
-                    $success .= " Role changed to: " . $updateFields['role'];
+            $stmt = $conn->prepare($updateQuery);
+            if ($stmt) {
+                $stmt->bind_param($types, ...$params);
+                
+                try {
+                    if ($stmt->execute()) {
+                        $success = "Profile updated successfully!";
+                        $currentUser = getCurrentUser();
+                    } else {
+                        $errors[] = "Failed to update profile";
+                    }
+                } catch (Exception $e) {
+                    $errors[] = "Failed to update profile";
                 }
-
-                // Refresh user data
-                $currentUser = getCurrentUser();
+                
+                $stmt->close();
             } else {
-                $errors[] = "Failed to update profile: " . $conn->error;
+                $errors[] = "Failed to prepare statement";
             }
         }
     }
@@ -123,8 +135,7 @@ require_once '../../template/nav.php';
         <div class="col-md-8 mx-auto">
             <div class="card">
                 <div class="card-header bg-primary text-white">
-                    <!-- Vulnerable: XSS in user name -->
-                    <h4><i class="fas fa-user-edit"></i> Edit Profile - <?php echo $currentUser['name']; ?></h4>
+                    <h4><i class="fas fa-user-edit"></i> Edit Profile - <?php echo htmlspecialchars($currentUser['name'], ENT_QUOTES, 'UTF-8'); ?></h4>
                 </div>
                 <div class="card-body">
                     <!-- Display errors -->
@@ -166,9 +177,8 @@ require_once '../../template/nav.php';
                                 
                                 <!-- Avatar Upload -->
                                 <div class="mb-3">
-                                    <label for="avatar" class="form-label">Change Avatar <span class="text-danger">(File Upload Vulnerability)</span></label>
-                                    <!-- Vulnerable: No file type restrictions, no size limits, directory traversal -->
-                                    <input type="file" class="form-control" id="avatar" name="avatar" accept="*/*">
+                                    <label for="avatar" class="form-label">Change Avatar</label>
+                                    <input type="file" class="form-control" id="avatar" name="avatar" accept="image/jpeg,image/png,image/gif">
                                   
                                 </div>
                             </div>
@@ -176,29 +186,24 @@ require_once '../../template/nav.php';
                             <div class="col-md-8">
                                 <div class="mb-3">
                                     <label for="name" class="form-label">Full Name</label>
-                                    <!-- Vulnerable: XSS in value attribute -->
                                     <input type="text" class="form-control" id="name" name="name" 
-                                           value="<?php echo $currentUser['name']; ?>" required>
+                                           value="<?php echo htmlspecialchars($currentUser['name'], ENT_QUOTES, 'UTF-8'); ?>" required>
                                 </div>
                                 
                                 <div class="mb-3">
                                     <label for="email" class="form-label">Email</label>
-                                    <!-- Vulnerable: XSS in value attribute -->
                                     <input type="email" class="form-control" id="email" name="email" 
-                                           value="<?php echo $currentUser['email']; ?>" required>
+                                           value="<?php echo htmlspecialchars($currentUser['email'], ENT_QUOTES, 'UTF-8'); ?>" required>
                                 </div>
                                 
                                 <div class="mb-3">
                                     <label for="phone" class="form-label">Phone Number</label>
-                                    <!-- Vulnerable: XSS in value attribute -->
                                     <input type="text" class="form-control" id="phone" name="phone" 
-                                           value="<?php echo $currentUser['phone']; ?>" required>
+                                           value="<?php echo htmlspecialchars($currentUser['phone'], ENT_QUOTES, 'UTF-8'); ?>" required>
                                 </div>
                                 
-                                <!-- Vulnerable: Role field should not be user-editable + XSS in label -->
                                 <div class="mb-3">
-                                    <label for="role" class="form-label">Role: <span class="text-danger"><?php echo $currentUser['role']; ?></span> </label>
-                                    
+                                    <label class="form-label">Role: <span class="text-danger"><?php echo htmlspecialchars($currentUser['role'], ENT_QUOTES, 'UTF-8'); ?></span> </label>                                    
                                 </div>
 
                                 <div class="mb-3">
