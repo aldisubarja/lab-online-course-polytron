@@ -11,13 +11,13 @@ if (!isLoggedIn() || !requireRole(['member'])) {
 $conn = getConnection();
 $courseId = $_GET['id'] ?? 0;
 
-// Vulnerable: SQL injection
-$query = "SELECT c.*, comp.company_name, comp.description as company_description 
+$stmt = $conn->prepare("SELECT c.*, comp.company_name, comp.description as company_description 
           FROM courses c 
           JOIN companies comp ON c.company_id = comp.id 
-          WHERE c.id = $courseId";
-
-$result = $conn->query($query);
+          WHERE c.id = ?");
+$stmt->bind_param("i", $courseId);
+$stmt->execute();
+$result = $stmt->get_result();
 
 if (!$result || $result->num_rows === 0) {
     header('Location: ' . BASE_URL . '/pages/member/courses.php?message=Course not found');
@@ -51,8 +51,7 @@ require_once '../../template/nav.php';
                 <img src="https://images.pexels.com/photos/1181671/pexels-photo-1181671.jpeg?auto=compress&cs=tinysrgb&w=800" 
                      class="card-img-top" alt="Course thumbnail" style="height: 300px; object-fit: cover;">
                 <div class="card-body">
-                    <!-- Vulnerable: XSS in course title -->
-                    <h1 class="card-title"><?php echo $course['title']; ?></h1>
+                    <h1 class="card-title"><?php echo htmlspecialchars($course['title']); ?></h1>
                     
                     <div class="d-flex align-items-center mb-3">
                         <span class="badge bg-primary me-2">
@@ -67,8 +66,7 @@ require_once '../../template/nav.php';
                         </span>
                     </div>
                     
-                    <!-- Vulnerable: XSS in description -->
-                    <p class="card-text"><?php echo $course['description']; ?></p>
+                    <p class="card-text"><?php echo htmlspecialchars($course['description']); ?></p>
                     
                     <!-- Enrollment Status -->
                     <?php if ($isEnrolled): ?>
@@ -115,8 +113,7 @@ require_once '../../template/nav.php';
                                 <div class="list-group-item d-flex justify-content-between align-items-center">
                                     <div>
                                         <i class="fas fa-play-circle text-primary me-2"></i>
-                                        <!-- Vulnerable: XSS in material title -->
-                                        <?php echo $material['title']; ?>
+                                        <?php echo htmlspecialchars($material['title']); ?>
                                     </div>
                                     <span class="badge bg-secondary"><?php echo $material['order_number']; ?></span>
                                 </div>
@@ -172,9 +169,8 @@ require_once '../../template/nav.php';
                     <h6><i class="fas fa-building"></i> About the Company</h6>
                 </div>
                 <div class="card-body">
-                    <h6><?php echo htmlspecialchars($course['company_name']); ?></h6>
-                    <!-- Vulnerable: XSS in company description -->
-                    <p class="small"><?php echo $course['company_description'] ?: 'No description available.'; ?></p>
+                    <h6><?php echo isset($course['company_name']) ? htmlspecialchars($course['company_name']) : 'Unknown Company'; ?></h6>
+                    <p class="small"><?php echo isset($course['company_description']) && $course['company_description'] ? htmlspecialchars($course['company_description']) : 'No description available.'; ?></p>
                 </div>
             </div>
             
@@ -184,10 +180,9 @@ require_once '../../template/nav.php';
     
    
 
-<!-- Vulnerable: XSS through message parameter -->
 <?php if (isset($_GET['message'])): ?>
     <script>
-        alert('<?php echo $_GET['message']; ?>');
+        alert('<?php echo htmlspecialchars($_GET['message'], ENT_QUOTES, 'UTF-8'); ?>');
     </script>
 <?php endif; ?>
 
