@@ -1,45 +1,59 @@
 <?php
 require_once '../../config/env.php';
+require_once '../../module/logger.php';
 
 startSession();
 
-// Vulnerable: No CSRF protection
+if (empty($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $name = $_POST['name'] ?? '';
-    $email = $_POST['email'] ?? '';
-    $phone = $_POST['phone'] ?? '';
-    $role = $_POST['role'] ?? 'member';
-    
-    $conn = getConnection();
-    
-    if (empty($name) || empty($email) || empty($phone)) {
-        $error = "All fields are required";
-    } else {
-        // Vulnerable: SQL injection
-        $checkQuery = "SELECT * FROM users WHERE phone = '$phone' OR email = '$email'";
-        $checkResult = $conn->query($checkQuery);
+    $csrf_token = $_POST['csrf_token'] ?? '';
+    if (!$csrf_token || $csrf_token !== $_SESSION['csrf_token']) {
+        $error = 'CSRF token is invalid or missing.';
+    }else{
+        $name = $_POST['name'] ?? '';
+        $email = $_POST['email'] ?? '';
+        $phone = $_POST['phone'] ?? '';
+        $role = $_POST['role'] ?? 'member';
         
-        if ($checkResult && $checkResult->num_rows > 0) {
-            $error = "Phone number or email already exists";
+        $conn = getConnection();
+        
+        if (empty($name) || empty($email) || empty($phone)) {
+            $error = "All fields are required";
         } else {
-            // Vulnerable: SQL injection
-            $insertQuery = "INSERT INTO users (name, email, phone, role, is_verified) 
-                           VALUES ('$name', '$email', '$phone', '$role', 1)";
+            $checkQuery = "SELECT * FROM users WHERE phone = ? OR email = ?";
+            $stmt = $conn->prepare($checkQuery);
+            $stmt->bind_param("ss", $phone, $email);
+            $stmt->execute();
+            $checkResult = $stmt->get_result();
             
-            if ($conn->query($insertQuery)) {
-                $userId = $conn->insert_id;
-                
-                // If company role, create company record
-                if ($role === 'company') {
-                    $companyName = $_POST['company_name'] ?? $name . ' Company';
-                    $companyQuery = "INSERT INTO companies (user_id, company_name) 
-                                    VALUES ($userId, '$companyName')";
-                    $conn->query($companyQuery);
-                }
-                
-                $success = "Registration successful! You can now login.";
+            if ($checkResult && $checkResult->num_rows > 0) {
+                $error = "Phone number or email already exists";
             } else {
-                $error = "Registration failed: " . $conn->error;
+                $insertQuery = "INSERT INTO users (name, email, phone, role, is_verified) VALUES (?, ?, ?, ?, 1)";
+                $stmt = $conn->prepare($insertQuery);
+                $stmt->bind_param("ssss", $name, $email, $phone, $role);
+                
+                if ($stmt->execute()) {
+                    $userId = $conn->insert_id;
+                    
+                    if ($role === 'company') {
+                        $companyName = $_POST['company_name'] ?? $name . ' Company';
+                        $companyQuery = "INSERT INTO companies (user_id, company_name) VALUES (?, ?)";
+                        $companyStmt = $conn->prepare($companyQuery);
+                        $companyStmt->bind_param("is", $userId, $companyName);
+                        $companyStmt->execute();
+                        $companyStmt->close();
+                    }
+                    
+                    $success = "Registration successful! You can now login.";
+                    writeLogToFile($phone . "Registered.");
+                } else {
+                    $error = "Registration failed: " . $stmt->error;
+                }
+                $stmt->close();
             }
         }
     }
@@ -71,8 +85,8 @@ require_once '../../template/nav.php';
                         </div>
                     <?php endif; ?>
                     
-                    <!-- Vulnerable: No CSRF token -->
                     <form method="POST" action="">
+                        <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($_SESSION['csrf_token']); ?>">
                         <div class="mb-3">
                             <label for="name" class="form-label">Full Name</label>
                             <input type="text" class="form-control" id="name" name="name" 

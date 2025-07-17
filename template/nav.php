@@ -18,10 +18,9 @@ if (function_exists('getCurrentUser')) {
 
 <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
     <div class="container">
-        <!-- Vulnerable: XSS in brand name -->
         <a class="navbar-brand" href="<?php echo BASE_URL; ?>/">
             <i class="fas fa-graduation-cap"></i>
-            <?php echo isset($_GET['brand']) ? $_GET['brand'] : 'VulnCourse'; ?>
+            <?php echo isset($_GET['brand']) ? htmlspecialchars($_GET['brand'], ENT_QUOTES, 'UTF-8') : 'VulnCourse'; ?>
         </a>
         
         <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
@@ -64,12 +63,13 @@ if (function_exists('getCurrentUser')) {
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-bs-toggle="dropdown">
                             <i class="fas fa-user"></i> 
-                            <!-- Vulnerable: XSS in user name -->
-                            <?php echo $currentUser['name']; ?>
+                            <?php echo htmlspecialchars($currentUser['name'], ENT_QUOTES, 'UTF-8'); ?>
                         </a>
                         <ul class="dropdown-menu">
                             <li><a class="dropdown-item" href="<?php echo BASE_URL; ?>/pages/member/profile.php"><i class="fas fa-user-edit"></i> Profile</a></li>
-                            <li><a class="dropdown-item" href="<?php echo BASE_URL; ?>/pages/admin/dashboard.php"><i class="fas fa-shield-alt"></i> Admin Panel</a></li>
+                            <?php if ($currentUser['role'] === 'company'): ?>
+                                <li><a class="dropdown-item" href="<?php echo BASE_URL; ?>/pages/admin/dashboard.php"><i class="fas fa-shield-alt"></i> Admin Panel</a></li>
+                            <?php endif;?>
                             <li><hr class="dropdown-divider"></li>
                             <li><a class="dropdown-item" href="<?php echo BASE_URL; ?>/pages/auth/logout.php"><i class="fas fa-sign-out-alt"></i> Logout</a></li>
                         </ul>

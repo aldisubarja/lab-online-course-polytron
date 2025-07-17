@@ -3,20 +3,21 @@ require_once '../../config/env.php';
 
 startSession();
 
-if (!isLoggedIn()) {
+if (!isLoggedIn() || !requireRole(['company'])) {
     header('Location: ' . BASE_URL . '/pages/auth/login.php');
     exit;
 }
 
 $conn = getConnection();
 
+$company_id = $_SESSION['user_company_id'];
+
 // Get all companies
-$companiesQuery = "SELECT c.*, u.name as owner_name, u.email, u.phone,
-                   (SELECT COUNT(*) FROM courses WHERE company_id = c.id) as course_count
-                   FROM companies c 
-                   JOIN users u ON c.user_id = u.id 
-                   ORDER BY c.created_at DESC";
-$companies = $conn->query($companiesQuery);
+$companiesQuery = "SELECT c.*, u.name as owner_name, u.email, u.phone, (SELECT COUNT(*) FROM courses WHERE company_id = c.id) as course_count FROM companies c  JOIN users u ON c.user_id = u.id  WHERE c.id = ? ORDER BY c.created_at DESC";
+$stmt = $conn->prepare($companiesQuery);
+$stmt->bind_param('i', $company_id);
+$stmt->execute();
+$companies = $stmt->get_result();
 
 $pageTitle = "Manage Companies - Admin";
 require_once '../../template/header.php';
@@ -56,8 +57,7 @@ require_once '../../template/nav.php';
                                     <?php while ($company = $companies->fetch_assoc()): ?>
                                         <tr>
                                             <td>
-                                                <!-- Vulnerable: XSS in company data -->
-                                                <strong><?php echo $company['company_name']; ?></strong>
+                                                <strong><?php echo htmlspecialchars($company['company_name']); ?></strong>
                                                 <?php if ($company['description']): ?>
                                                     <br><small class="text-muted"><?php echo substr($company['description'], 0, 100) . '...'; ?></small>
                                                 <?php endif; ?>

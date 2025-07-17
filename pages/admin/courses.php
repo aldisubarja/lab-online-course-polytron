@@ -3,20 +3,21 @@ require_once '../../config/env.php';
 
 startSession();
 
-if (!isLoggedIn()) {
+if (!isLoggedIn() || !requireRole(['company'])) {
     header('Location: ' . BASE_URL . '/pages/auth/login.php');
     exit;
 }
 
 $conn = getConnection();
 
+$company_id = $_SESSION['user_company_id'];
+
 // Get all courses
-$coursesQuery = "SELECT c.*, comp.company_name, 
-                 (SELECT COUNT(*) FROM enrollments WHERE course_id = c.id) as enrollment_count
-                 FROM courses c 
-                 JOIN companies comp ON c.company_id = comp.id 
-                 ORDER BY c.created_at DESC";
-$courses = $conn->query($coursesQuery);
+$coursesQuery = "SELECT c.*, comp.company_name,  (SELECT COUNT(*) FROM enrollments WHERE course_id = c.id) as enrollment_count FROM courses c JOIN companies comp ON c.company_id = comp.id  WHERE c.company_id = ? ORDER BY c.created_at DESC";
+$stmt = $conn->prepare($coursesQuery);
+$stmt->bind_param('i', $company_id);
+$stmt->execute();
+$courses = $stmt->get_result();
 
 $pageTitle = "Manage Courses - Admin";
 require_once '../../template/header.php';
@@ -38,8 +39,7 @@ require_once '../../template/nav.php';
                 <div class="col-md-6 mb-4">
                     <div class="card h-100">
                         <div class="card-body">
-                            <!-- Vulnerable: XSS in course data -->
-                            <h5 class="card-title"><?php echo $course['title']; ?></h5>
+                            <h5 class="card-title"><?php echo htmlspecialchars($course['title']); ?></h5>
                             <p class="card-text"><?php echo substr($course['description'], 0, 150) . '...'; ?></p>
                             
                             <div class="mb-3">

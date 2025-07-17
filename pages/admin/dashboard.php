@@ -3,8 +3,7 @@ require_once '../../config/env.php';
 
 startSession();
 
-// Vulnerable: No proper admin check
-if (!isLoggedIn()) {
+if (!isLoggedIn() || !requireRole(['company'])) {
     header('Location: ' . BASE_URL . '/pages/auth/login.php');
     exit;
 }
@@ -12,25 +11,63 @@ if (!isLoggedIn()) {
 $currentUser = getCurrentUser();
 $conn = getConnection();
 
-// Vulnerable: Anyone can access admin panel
-// Should check for admin role but we don't have one
+$company_id = isset($_SESSION['user_company_id'])
+    ? intval($_SESSION['user_company_id'])
+    : 0;
 
-// Get system statistics
-$usersQuery = "SELECT COUNT(*) as total FROM users";
-$usersResult = $conn->query($usersQuery);
-$usersCount = $usersResult ? $usersResult->fetch_assoc()['total'] : 0;
+if ($company_id <= 0) {
+    die('Invalid company ID');
+}
 
-$coursesQuery = "SELECT COUNT(*) as total FROM courses";
-$coursesResult = $conn->query($coursesQuery);
-$coursesCount = $coursesResult ? $coursesResult->fetch_assoc()['total'] : 0;
+// helper to run a single‐column COUNT query
+function fetchCount(mysqli $conn, string $sql, int $company_id): int {
+    $stmt = $conn->prepare($sql);
+    if (!$stmt) {
+        error_log('Prepare failed: ' . $conn->error);
+        return 0;
+    }
+    $stmt->bind_param('i', $company_id);
+    $stmt->execute();
+    $stmt->bind_result($total);
+    $stmt->fetch();
+    $stmt->close();
+    return (int)$total;
+}
 
-$enrollmentsQuery = "SELECT COUNT(*) as total FROM enrollments";
-$enrollmentsResult = $conn->query($enrollmentsQuery);
-$enrollmentsCount = $enrollmentsResult ? $enrollmentsResult->fetch_assoc()['total'] : 0;
+// 1) Unique users who've enrolled in *this* company's courses
+$usersSql = "
+    SELECT COUNT(DISTINCT u.id) AS total
+      FROM users u
+      JOIN enrollments e ON e.user_id = u.id
+      JOIN courses c     ON c.id        = e.course_id
+     WHERE c.company_id = ?
+";
+$usersCount = fetchCount($conn, $usersSql, $company_id);
 
-$companiesQuery = "SELECT COUNT(*) as total FROM companies";
-$companiesResult = $conn->query($companiesQuery);
-$companiesCount = $companiesResult ? $companiesResult->fetch_assoc()['total'] : 0;
+// 2) Courses owned by this company
+$coursesSql = "
+    SELECT COUNT(*) AS total
+      FROM courses
+     WHERE company_id = ?
+";
+$coursesCount = fetchCount($conn, $coursesSql, $company_id);
+
+// 3) Total enrollments *in* this company’s courses
+$enrollmentsSql = "
+    SELECT COUNT(*) AS total
+      FROM enrollments e
+      JOIN courses c ON c.id = e.course_id
+     WHERE c.company_id = ?
+";
+$enrollmentsCount = fetchCount($conn, $enrollmentsSql, $company_id);
+
+// 4) (Usually 1) companies record for this ID — still parameterized
+$companiesSql = "
+    SELECT COUNT(*) AS total
+      FROM companies
+     WHERE id = ?
+";
+$companiesCount = fetchCount($conn, $companiesSql, $company_id);
 
 // Get recent activities
 $recentQuery = "SELECT 'enrollment' as type, e.id, u.name, c.title, e.enrolled_at as created_at
@@ -51,12 +88,6 @@ require_once '../../template/nav.php';
 ?>
 
 <div class="container mt-4">
-    <!-- Warning Banner -->
-    <div class="alert alert-danger">
-        <i class="fas fa-exclamation-triangle"></i> 
-        <strong>Security Warning:</strong> This admin panel has no access control! Anyone can access it.
-    </div>
-
     <!-- Welcome Section -->
     <div class="row mb-4">
         <div class="col-12">
@@ -210,25 +241,6 @@ require_once '../../template/nav.php';
         </div>
     </div>
 
-    <!-- Vulnerability Information -->
-    <div class="row mt-4">
-        <div class="col-12">
-            <div class="card border-danger">
-                <div class="card-header bg-danger text-white">
-                    <h6><i class="fas fa-bug"></i> Admin Panel Vulnerabilities</h6>
-                </div>
-                <div class="card-body">
-                    <ul class="small mb-0">
-                        <li>No admin role verification - anyone can access</li>
-                        <li>No proper authentication for admin functions</li>
-                        <li>Exposed system statistics</li>
-                        <li>SQL injection in all queries</li>
-                        <li>No audit logging for admin actions</li>
-                    </ul>
-                </div>
-            </div>
-        </div>
-    </div>
 </div>
 
 <?php require_once '../../template/footer.php'; ?>

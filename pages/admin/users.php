@@ -3,52 +3,87 @@ require_once '../../config/env.php';
 
 startSession();
 
-if (!isLoggedIn()) {
+if (!isLoggedIn() || !requireRole(['company'])) {
     header('Location: ' . BASE_URL . '/pages/auth/login.php');
     exit;
 }
 
 $conn = getConnection();
 
-// Vulnerable: No CSRF protection for user actions
 if (isset($_GET['action']) && isset($_GET['user_id'])) {
     $action = $_GET['action'];
     $userId = $_GET['user_id'];
     
-    // Vulnerable: SQL injection
     if ($action === 'delete') {
-        $deleteQuery = "DELETE FROM users WHERE id = $userId";
-        if ($conn->query($deleteQuery)) {
+        // Prepare the statement
+        $stmt = $conn->prepare("DELETE FROM users WHERE id = ?");
+        if (!$stmt) {
+            throw new Exception("Prepare failed: " . $conn->error);
+        }
+        // Bind the integer parameter
+        $stmt->bind_param("i", $userId);
+        
+        // Execute and check
+        if ($stmt->execute()) {
             $success = "User deleted successfully!";
+        } else {
+            $error = "Delete failed: " . $stmt->error;
         }
+        $stmt->close();
+
     } elseif ($action === 'toggle_verify') {
-        $toggleQuery = "UPDATE users SET is_verified = NOT is_verified WHERE id = $userId";
-        if ($conn->query($toggleQuery)) {
-            $success = "User verification status updated!";
+        $stmt = $conn->prepare("UPDATE users SET is_verified = NOT is_verified WHERE id = ?");
+        if (!$stmt) {
+            throw new Exception("Prepare failed: " . $conn->error);
         }
+        $stmt->bind_param("i", $userId);
+        
+        if ($stmt->execute()) {
+            $success = "User verification status updated!";
+        } else {
+            $error = "Toggle failed: " . $stmt->error;
+        }
+        $stmt->close();
     }
 }
 
-// Get all users with search
-$search = $_GET['search'] ?? '';
-$role = $_GET['role'] ?? '';
+// Build search query safely:
+$searchTerm = trim($_GET['search'] ?? '');
+$roleTerm   = trim($_GET['role'] ?? '');
+$search = trim($_GET['search'] ?? '');
+$sql  = "SELECT u.*, c.company_name
+         FROM users u
+         LEFT JOIN companies c ON u.id = c.user_id
+         WHERE 1=1";
+$params = [];
+$types  = '';
 
-$usersQuery = "SELECT u.*, c.company_name FROM users u 
-               LEFT JOIN companies c ON u.id = c.user_id 
-               WHERE 1=1";
-
-if ($search) {
-    // Vulnerable: SQL injection
-    $usersQuery .= " AND (u.name LIKE '%$search%' OR u.email LIKE '%$search%' OR u.phone LIKE '%$search%')";
+// If searching:
+if ($searchTerm !== '') {
+    $sql .= " AND (u.name LIKE ? OR u.email LIKE ? OR u.phone LIKE ?)";
+    $like = "%{$searchTerm}%";
+    // bind the same value three times
+    $params[] = $like;
+    $params[] = $like;
+    $params[] = $like;
+    $types .= 'sss';
 }
 
-if ($role) {
-    // Vulnerable: SQL injection
-    $usersQuery .= " AND u.role = '$role'";
+if ($roleTerm !== '') {
+    $sql .= " AND u.role = ?";
+    $params[] = $roleTerm;
+    $types .= 's';
 }
 
-$usersQuery .= " ORDER BY u.created_at DESC";
-$users = $conn->query($usersQuery);
+$sql .= " ORDER BY u.created_at DESC";
+
+$stmt = $conn->prepare($sql);
+if ($types !== '') {
+    // dynamic param binding
+    $stmt->bind_param($types, ...$params);
+}
+$stmt->execute();
+$users = $stmt->get_result();
 
 $pageTitle = "Manage Users - Admin";
 require_once '../../template/header.php';
@@ -78,10 +113,9 @@ require_once '../../template/nav.php';
                         <div class="row">
                             <div class="col-md-6">
                                 <label for="search" class="form-label">Search</label>
-                                <!-- Vulnerable: XSS in search value -->
                                 <input type="text" class="form-control" id="search" name="search" 
                                        placeholder="Search by name, email, or phone..." 
-                                       value="<?php echo $search; ?>">
+                                       value="<?php echo htmlspecialchars($search); ?>">
                             </div>
                             <div class="col-md-4">
                                 <label for="role" class="form-label">Role</label>
@@ -131,16 +165,15 @@ require_once '../../template/nav.php';
                                     <?php while ($user = $users->fetch_assoc()): ?>
                                         <tr>
                                             <td><?php echo $user['id']; ?></td>
-                                            <!-- Vulnerable: XSS in user data -->
-                                            <td><?php echo $user['name']; ?></td>
-                                            <td><?php echo $user['email']; ?></td>
-                                            <td><?php echo $user['phone']; ?></td>
+                                            <td><?php echo htmlspecialchars($user['name']); ?></td>
+                                            <td><?php echo htmlspecialchars($user['email']); ?></td>
+                                            <td><?php echo htmlspecialchars($user['phone']); ?></td>
                                             <td>
                                                 <span class="badge bg-<?php echo $user['role'] === 'company' ? 'primary' : 'secondary'; ?>">
-                                                    <?php echo ucfirst($user['role']); ?>
+                                                    <?php echo ucfirst(htmlspecialchars($user['role'])); ?>
                                                 </span>
                                             </td>
-                                            <td><?php echo $user['company_name'] ?? '-'; ?></td>
+                                            <td><?php echo $user['company_name'] ? htmlspecialchars($user['company_name']) : '-'; ?></td>
                                             <td>
                                                 <span class="badge bg-<?php echo $user['is_verified'] ? 'success' : 'warning'; ?>">
                                                     <?php echo $user['is_verified'] ? 'Verified' : 'Unverified'; ?>
@@ -148,7 +181,6 @@ require_once '../../template/nav.php';
                                             </td>
                                             <td><?php echo date('M d, Y', strtotime($user['created_at'])); ?></td>
                                             <td>
-                                                <!-- Vulnerable: No CSRF protection -->
                                                 <a href="?action=toggle_verify&user_id=<?php echo $user['id']; ?>" 
                                                    class="btn btn-sm btn-warning">
                                                     <i class="fas fa-toggle-on"></i>
