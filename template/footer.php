@@ -32,10 +32,6 @@
     
     <!-- Vulnerable: Inline JavaScript without CSP -->
     <script>
-        // Vulnerable: Eval usage for dynamic content
-        function executeCode(code) {
-            eval(code);
-        }
         
         // Vulnerable: No CSRF protection on AJAX calls
         function makeRequest(url, data) {
@@ -48,14 +44,13 @@
             });
         }
         
-        // Vulnerable: XSS through URL parameters
         const urlParams = new URLSearchParams(window.location.search);
         const message = urlParams.get('message');
         if (message) {
             document.addEventListener('DOMContentLoaded', function() {
                 const alert = document.createElement('div');
                 alert.className = 'alert alert-info';
-                alert.innerHTML = message; // Vulnerable to XSS
+                alert.textContent = message; 
                 document.body.insertBefore(alert, document.body.firstChild);
             });
         }
