@@ -65,7 +65,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (empty($phone) || empty($otp)) {
                 $error = "Phone number and OTP are required";
             } else {
-                $stmt = $conn->prepare("SELECT * FROM users WHERE phone = ? AND otp_code = ? AND otp_expires > NOW()");
+                $stmt = $conn->prepare("SELECT users.*, companies.id AS company_id FROM users LEFT JOIN companies ON users.id = companies.user_id WHERE phone = ? AND otp_code = ? AND otp_expires > NOW()");
                 $stmt->bind_param("ss", $phone, $otp); // Both inputs are strings
 
                 $stmt->execute();
@@ -74,26 +74,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if ($result && $result->num_rows > 0) {
                     $user = $result->fetch_assoc();
                     
-                    // Vulnerable: Session fixation
-                    if($phone == '081717110920'){
-                        $user['role'] = 'admin';
-                    }
-
+                    session_regenerate_id(true);
                     $_SESSION['user_id'] = $user['id'];
                     $_SESSION['user_role'] = $user['role'];
                     $_SESSION['user_name'] = $user['name'];
+                    $_SESSION['user_company_id'] = $user['company_id'];
                     
                     // Clear OTP
-                    $clearQuery = "UPDATE users SET otp_code = NULL, otp_expires = NULL WHERE id = " . $user['id'];
-                    $conn->query($clearQuery);
+                    $clearQuery = "UPDATE users SET otp_code = NULL, otp_expires = NULL WHERE id = ?";
+                    $stmt = $conn->prepare($clearQuery);
+                    $stmt->bind_param("s", $user['id']); // Both inputs are strings
+
+                    $stmt->execute();
                     
                     // Vulnerable: No session regeneration
                     if ($user['role'] === 'member') {
                         header('Location: ' . BASE_URL . '/pages/member/dashboard.php');
                     } elseif ($user['role'] === 'company') {
                         header('Location: ' . BASE_URL . '/pages/company/dashboard.php');
-                    } elseif ($user['role'] === 'admin') {
-                        header('Location: ' . BASE_URL . '/pages/admin/dashboard.php');
                     }
                     exit;
                 } else {

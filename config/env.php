@@ -59,7 +59,6 @@ function startSession() {
         ini_set('session.cookie_httponly', 1); // XSS vulnerable
         ini_set('session.cookie_secure', 1);   // Not HTTPS only
         ini_set('session.use_strict_mode', 1); // Session fixation vulnerable
-
         session_start();
     } elseif (session_status() === PHP_SESSION_NONE && headers_sent()) {
         // If headers already sent (e.g., command line), just start session without ini_set

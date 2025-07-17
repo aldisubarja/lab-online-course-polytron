@@ -3,7 +3,7 @@ require_once '../../config/env.php';
 
 startSession();
 
-if (!isLoggedIn() || !requireRole(['admin'])) {
+if (!isLoggedIn() || !requireRole(['company'])) {
     header('Location: ' . BASE_URL . '/pages/auth/login.php');
     exit;
 }

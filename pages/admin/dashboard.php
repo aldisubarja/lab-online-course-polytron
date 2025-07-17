@@ -4,7 +4,7 @@ require_once '../../config/env.php';
 startSession();
 
 // Vulnerable: No proper admin check
-if (!isLoggedIn() || !requireRole(['admin'])) {
+if (!isLoggedIn() || !requireRole(['company'])) {
     header('Location: ' . BASE_URL . '/pages/auth/login.php');
     exit;
 }
