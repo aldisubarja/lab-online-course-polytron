@@ -103,7 +103,6 @@ require_once '../../template/nav.php';
                     <h5><i class="fas fa-tools"></i> System Actions</h5>
                 </div>
                 <div class="card-body">
-                    <!-- Vulnerable: No CSRF protection -->
                     <form method="POST" class="mb-3">
                         <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($_SESSION['csrf_token']); ?>">
                             
