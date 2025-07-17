@@ -113,10 +113,9 @@ require_once '../../template/nav.php';
                         <div class="row">
                             <div class="col-md-6">
                                 <label for="search" class="form-label">Search</label>
-                                <!-- Vulnerable: XSS in search value -->
                                 <input type="text" class="form-control" id="search" name="search" 
                                        placeholder="Search by name, email, or phone..." 
-                                       value="<?php echo $search; ?>">
+                                       value="<?php echo htmlspecialchars($search); ?>">
                             </div>
                             <div class="col-md-4">
                                 <label for="role" class="form-label">Role</label>
@@ -166,16 +165,15 @@ require_once '../../template/nav.php';
                                     <?php while ($user = $users->fetch_assoc()): ?>
                                         <tr>
                                             <td><?php echo $user['id']; ?></td>
-                                            <!-- Vulnerable: XSS in user data -->
-                                            <td><?php echo $user['name']; ?></td>
-                                            <td><?php echo $user['email']; ?></td>
-                                            <td><?php echo $user['phone']; ?></td>
+                                            <td><?php echo htmlspecialchars($user['name']); ?></td>
+                                            <td><?php echo htmlspecialchars($user['email']); ?></td>
+                                            <td><?php echo htmlspecialchars($user['phone']); ?></td>
                                             <td>
                                                 <span class="badge bg-<?php echo $user['role'] === 'company' ? 'primary' : 'secondary'; ?>">
-                                                    <?php echo ucfirst($user['role']); ?>
+                                                    <?php echo ucfirst(htmlspecialchars($user['role'])); ?>
                                                 </span>
                                             </td>
-                                            <td><?php echo $user['company_name'] ?? '-'; ?></td>
+                                            <td><?php echo $user['company_name'] ? htmlspecialchars($user['company_name']) : '-'; ?></td>
                                             <td>
                                                 <span class="badge bg-<?php echo $user['is_verified'] ? 'success' : 'warning'; ?>">
                                                     <?php echo $user['is_verified'] ? 'Verified' : 'Unverified'; ?>
@@ -183,7 +181,6 @@ require_once '../../template/nav.php';
                                             </td>
                                             <td><?php echo date('M d, Y', strtotime($user['created_at'])); ?></td>
                                             <td>
-                                                <!-- Vulnerable: No CSRF protection -->
                                                 <a href="?action=toggle_verify&user_id=<?php echo $user['id']; ?>" 
                                                    class="btn btn-sm btn-warning">
                                                     <i class="fas fa-toggle-on"></i>

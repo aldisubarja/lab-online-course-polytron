@@ -241,25 +241,6 @@ require_once '../../template/nav.php';
         </div>
     </div>
 
-    <!-- Vulnerability Information -->
-    <div class="row mt-4">
-        <div class="col-12">
-            <div class="card border-danger">
-                <div class="card-header bg-danger text-white">
-                    <h6><i class="fas fa-bug"></i> Admin Panel Vulnerabilities</h6>
-                </div>
-                <div class="card-body">
-                    <ul class="small mb-0">
-                        <li>No admin role verification - anyone can access</li>
-                        <li>No proper authentication for admin functions</li>
-                        <li>Exposed system statistics</li>
-                        <li>SQL injection in all queries</li>
-                        <li>No audit logging for admin actions</li>
-                    </ul>
-                </div>
-            </div>
-        </div>
-    </div>
 </div>
 
 <?php require_once '../../template/footer.php'; ?>

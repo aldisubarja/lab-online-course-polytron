@@ -67,7 +67,9 @@ if (function_exists('getCurrentUser')) {
                         </a>
                         <ul class="dropdown-menu">
                             <li><a class="dropdown-item" href="<?php echo BASE_URL; ?>/pages/member/profile.php"><i class="fas fa-user-edit"></i> Profile</a></li>
-                            <li><a class="dropdown-item" href="<?php echo BASE_URL; ?>/pages/admin/dashboard.php"><i class="fas fa-shield-alt"></i> Admin Panel</a></li>
+                            <?php if ($currentUser['role'] === 'company'): ?>
+                                <li><a class="dropdown-item" href="<?php echo BASE_URL; ?>/pages/admin/dashboard.php"><i class="fas fa-shield-alt"></i> Admin Panel</a></li>
+                            <?php endif;?>
                             <li><hr class="dropdown-divider"></li>
                             <li><a class="dropdown-item" href="<?php echo BASE_URL; ?>/pages/auth/logout.php"><i class="fas fa-sign-out-alt"></i> Logout</a></li>
                         </ul>

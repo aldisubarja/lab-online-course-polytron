@@ -1,225 +1,227 @@
 <?php
 require_once '../../config/env.php';
-
 startSession();
 
+// --- Access control ---
 if (!isLoggedIn() || !requireRole(['member'])) {
     header('Location: ' . BASE_URL . '/pages/auth/login.php');
     exit;
 }
 
+// --- CSRF token generation ---
+if (empty($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+}
+$csrfToken = $_SESSION['csrf_token'];
+
 $conn = getConnection();
-$courseId = $_GET['course_id'] ?? 0;
 $currentUser = getCurrentUser();
 
-// Vulnerable: SQL injection
-$query = "SELECT c.*, comp.company_name FROM courses c 
-          JOIN companies comp ON c.company_id = comp.id 
-          WHERE c.id = $courseId";
+// Sanitize & cast
+$courseId = (int)($_GET['course_id'] ?? 0);
 
-$result = $conn->query($query);
+// --- Fetch course with prepared statement ---
+$stmt = $conn->prepare(
+    "SELECT c.*, comp.company_name
+       FROM courses c
+       JOIN companies comp ON c.company_id = comp.id
+      WHERE c.id = ?"
+);
+$stmt->bind_param('i', $courseId);
+$stmt->execute();
+$result = $stmt->get_result();
 
-if (!$result || $result->num_rows === 0) {
-    header('Location: ' . BASE_URL . '/pages/member/courses.php?message=Course not found');
+if ($result->num_rows === 0) {
+    header('Location: ' . BASE_URL . '/pages/member/courses.php?message=' . urlencode('Course not found'));
     exit;
 }
-
 $course = $result->fetch_assoc();
+$stmt->close();
 
-// Check if already enrolled
-$userId = $_SESSION['user_id'];
-$enrollmentQuery = "SELECT * FROM enrollments WHERE user_id = $userId AND course_id = $courseId";
-$enrollmentResult = $conn->query($enrollmentQuery);
-$isEnrolled = $enrollmentResult && $enrollmentResult->num_rows > 0;
+// --- Check enrollment with prepared statement ---
+$userId = (int)$_SESSION['user_id'];
+$stmt = $conn->prepare(
+    "SELECT 1 FROM enrollments WHERE user_id = ? AND course_id = ?"
+);
+$stmt->bind_param('ii', $userId, $courseId);
+$stmt->execute();
+$enrolled = $stmt->get_result()->num_rows > 0;
+$stmt->close();
 
-if ($isEnrolled) {
-    header("Location: " . BASE_URL . "/pages/member/course-detail.php?id=$courseId&message=Already enrolled");
+if ($enrolled) {
+    header("Location: " . BASE_URL . "/pages/member/course-detail.php?id={$courseId}&message=" . urlencode('Already enrolled'));
     exit;
 }
 
-// Vulnerable: No CSRF protection
+// --- Handle form submit ---
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $paymentMethod = $_POST['payment_method'] ?? '';
-    
+    // CSRF check
+    if (!hash_equals($_SESSION['csrf_token'], $_POST['csrf_token'] ?? '')) {
+        http_response_code(400);
+        die('Invalid CSRF token');
+    }
+
     if ($course['price'] == 0) {
-        // Free course - auto approve
-        $insertQuery = "INSERT INTO enrollments (user_id, course_id, status) 
-                        VALUES ($userId, $courseId, 'confirmed')";
-        
-        if ($conn->query($insertQuery)) {
-            header("Location: " . BASE_URL . "/pages/member/course-detail.php?id=$courseId&message=Successfully enrolled!");
+        // Free course — use prepared INSERT
+        $stmt = $conn->prepare(
+            "INSERT INTO enrollments (user_id, course_id, status)
+             VALUES (?, ?, 'confirmed')"
+        );
+        $stmt->bind_param('ii', $userId, $courseId);
+        if ($stmt->execute()) {
+            header("Location: " . BASE_URL . "/pages/member/course-detail.php?id={$courseId}&message=" . urlencode('Successfully enrolled!'));
             exit;
-        } else {
-            $error = "Failed to enroll: " . $conn->error;
         }
+        $error = "Failed to enroll: " . htmlspecialchars($stmt->error, ENT_QUOTES, 'UTF-8');
+        $stmt->close();
     } else {
-        // Paid course - handle payment proof upload
-        if (isset($_FILES['payment_proof']) && $_FILES['payment_proof']['error'] === UPLOAD_ERR_OK) {
-            // Vulnerable: No file validation
-            $fileName = $_FILES['payment_proof']['name'];
-            $targetDir = 'uploads/payments/';
-            
-            // Vulnerable: Directory traversal
-            $targetFile = $targetDir . basename($fileName);
-            
-            if (!file_exists($targetDir)) {
-                mkdir($targetDir, 0777, true); // Vulnerable: Permissive permissions
-            }
-            
-            if (move_uploaded_file($_FILES['payment_proof']['tmp_name'], $targetFile)) {
-                // Vulnerable: SQL injection
-                $insertQuery = "INSERT INTO enrollments (user_id, course_id, payment_proof, status) 
-                                VALUES ($userId, $courseId, '$targetFile', 'pending')";
-                
-                if ($conn->query($insertQuery)) {
-                    header("Location: " . BASE_URL . "/pages/member/course-detail.php?id=$courseId&message=Payment submitted for review");
-                    exit;
-                } else {
-                    $error = "Failed to submit payment: " . $conn->error;
-                }
-            } else {
-                $error = "Failed to upload payment proof";
-            }
+        // Paid course — validate file
+        if (empty($_FILES['payment_proof']) || $_FILES['payment_proof']['error'] !== UPLOAD_ERR_OK) {
+            $error = "Payment proof is required.";
         } else {
-            $error = "Payment proof is required for paid courses";
+            $fileTmp  = $_FILES['payment_proof']['tmp_name'];
+            $fileName = basename($_FILES['payment_proof']['name']);
+            $fileExt  = strtolower(pathinfo($fileName, PATHINFO_EXTENSION));
+            $mime     = mime_content_type($fileTmp);
+
+            // 1. MIME & extension whitelist
+            $allowed = ['jpg','jpeg','png'];
+            $allowedMimes = ['image/jpeg','image/png'];
+            if (!in_array($fileExt, $allowed, true) || !in_array($mime, $allowedMimes, true)) {
+                $error = "Only JPG/PNG images allowed.";
+            }
+            // 2. Size limit
+            elseif (filesize($fileTmp) > 5 * 1024 * 1024) {
+                $error = "Max file size is 5 MB.";
+            } else {
+                // 3. Safe filename & directory
+                $safeName = bin2hex(random_bytes(16)) . ".$fileExt";
+                $uploadDir = __DIR__ . '/uploads/payments/';
+                if (!is_dir($uploadDir)) {
+                    mkdir($uploadDir, 0755, true);
+                }
+                $dest = $uploadDir . $safeName;
+
+                if (move_uploaded_file($fileTmp, $dest)) {
+                    $relativePath = 'uploads/payments/' . $safeName;
+                    // 4. Prepared INSERT
+                    $stmt = $conn->prepare(
+                        "INSERT INTO enrollments (user_id, course_id, payment_proof, status)
+                         VALUES (?, ?, ?, 'pending')"
+                    );
+                    $stmt->bind_param('iis', $userId, $courseId, $relativePath);
+                    if ($stmt->execute()) {
+                        header("Location: " . BASE_URL . "/pages/member/course-detail.php?id={$courseId}&message=" . urlencode('Payment submitted for review'));
+                        exit;
+                    }
+                    $error = "Submission failed: " . htmlspecialchars($stmt->error, ENT_QUOTES, 'UTF-8');
+                    $stmt->close();
+                } else {
+                    $error = "Upload failed.";
+                }
+            }
         }
     }
 }
-
-$pageTitle = "Checkout - " . $course['title'];
+$pageTitle = "Checkout - " . htmlspecialchars($course['title'], ENT_QUOTES, 'UTF-8');
 require_once '../../template/header.php';
 require_once '../../template/nav.php';
 ?>
 
 <div class="container mt-4">
-    <div class="row justify-content-center">
-        <div class="col-md-8">
-            <div class="card">
-                <div class="card-header bg-success text-white">
-                    <h4><i class="fas fa-shopping-cart"></i> Checkout</h4>
-                </div>
-                <div class="card-body">
-                    <!-- Display errors -->
-                    <?php if (isset($error)): ?>
-                        <div class="alert alert-danger">
-                            <i class="fas fa-exclamation-triangle"></i> <?php echo $error; ?>
-                        </div>
-                    <?php endif; ?>
-                    
-                    <!-- Course Information -->
-                    <div class="card mb-4">
-                        <div class="card-body">
-                            <div class="row">
-                                <div class="col-md-8">
-                                    <!-- Vulnerable: XSS in course title -->
-                                    <h5><?php echo $course['title']; ?></h5>
-                                    <p class="text-muted">By <?php echo htmlspecialchars($course['company_name']); ?></p>
-                                    <!-- Vulnerable: XSS in description -->
-                                    <p><?php echo substr($course['description'], 0, 200) . '...'; ?></p>
-                                </div>
-                                <div class="col-md-4 text-end">
-                                    <h3 class="text-success">
-                                        <?php echo $course['price'] == 0 ? 'Free' : '$' . number_format($course['price'], 2); ?>
-                                    </h3>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <!-- Checkout Form -->
-                    <!-- Vulnerable: No CSRF token -->
-                    <form method="POST" enctype="multipart/form-data">
-                        <!-- User Information -->
-                        <div class="card mb-4">
-                            <div class="card-header">
-                                <h6><i class="fas fa-user"></i> Student Information</h6>
-                            </div>
-                            <div class="card-body">
-                                <div class="row">
-                                    <div class="col-md-6">
-                                        <label class="form-label">Name</label>
-                                        <!-- Vulnerable: XSS in user data -->
-                                        <input type="text" class="form-control" value="<?php echo $currentUser['name']; ?>" disabled>
-                                    </div>
-                                    <div class="col-md-6">
-                                        <label class="form-label">Email</label>
-                                        <!-- Vulnerable: XSS in user data -->
-                                        <input type="email" class="form-control" value="<?php echo $currentUser['email']; ?>" disabled>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <!-- Payment Information -->
-                        <?php if ($course['price'] > 0): ?>
-                            <div class="card mb-4">
-                                <div class="card-header">
-                                    <h6><i class="fas fa-credit-card"></i> Payment Information</h6>
-                                </div>
-                                <div class="card-body">
-                                    <div class="alert alert-info">
-                                        <h6><i class="fas fa-university"></i> Bank Transfer Details</h6>
-                                        <p><strong>Bank:</strong> VulnBank</p>
-                                        <p><strong>Account Number:</strong> 1234567890</p>
-                                        <p><strong>Account Name:</strong> VulnCourse Platform</p>
-                                        <p><strong>Amount:</strong> $<?php echo number_format($course['price'], 2); ?></p>
-                                    </div>
-                                    
-                                    <div class="mb-3">
-                                        <label for="payment_proof" class="form-label">Payment Proof</label>
-                                        <!-- Vulnerable: No file type validation -->
-                                        <input type="file" class="form-control" id="payment_proof" name="payment_proof" required>
-                                        <div class="form-text">Upload your payment receipt/screenshot (any file type accepted - vulnerable!)</div>
-                                    </div>
-                                </div>
-                            </div>
-                        <?php endif; ?>
-                        
-                        <!-- Order Summary -->
-                        <div class="card mb-4">
-                            <div class="card-header">
-                                <h6><i class="fas fa-receipt"></i> Order Summary</h6>
-                            </div>
-                            <div class="card-body">
-                                <div class="d-flex justify-content-between">
-                                    <span>Course Price:</span>
-                                    <span class="fw-bold">
-                                        <?php echo $course['price'] == 0 ? 'Free' : '$' . number_format($course['price'], 2); ?>
-                                    </span>
-                                </div>
-                                <div class="d-flex justify-content-between">
-                                    <span>Processing Fee:</span>
-                                    <span>$0.00</span>
-                                </div>
-                                <hr>
-                                <div class="d-flex justify-content-between h5">
-                                    <span>Total:</span>
-                                    <span class="text-success">
-                                        <?php echo $course['price'] == 0 ? 'Free' : '$' . number_format($course['price'], 2); ?>
-                                    </span>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <!-- Submit Buttons -->
-                        <div class="d-flex justify-content-between">
-                            <a href="<?php echo BASE_URL; ?>/pages/member/course-detail.php?id=<?php echo $course['id']; ?>"
-                               class="btn btn-secondary">
-                                <i class="fas fa-arrow-left"></i> Back to Course
-                            </a>
-                            
-                            <button type="submit" class="btn btn-success">
-                                <i class="fas fa-check"></i> 
-                                <?php echo $course['price'] == 0 ? 'Enroll for Free' : 'Submit Payment'; ?>
-                            </button>
-                        </div>
-                    </form>
-                </div>
-            </div>
-            
-
+  <div class="row justify-content-center">
+    <div class="col-md-8">
+      <div class="card">
+        <div class="card-header bg-success text-white">
+          <h4><i class="fas fa-shopping-cart"></i> Checkout</h4>
         </div>
+        <div class="card-body">
+          <!-- Error message -->
+          <?php if (!empty($error)): ?>
+            <div class="alert alert-danger">
+              <i class="fas fa-exclamation-triangle"></i> <?= htmlspecialchars($error, ENT_QUOTES, 'UTF-8') ?>
+            </div>
+          <?php endif; ?>
+
+          <!-- Course info -->
+          <div class="card mb-4">
+            <div class="card-body">
+              <h5><?= htmlspecialchars($course['title'], ENT_QUOTES, 'UTF-8') ?></h5>
+              <p class="text-muted">By <?= htmlspecialchars($course['company_name'], ENT_QUOTES, 'UTF-8') ?></p>
+              <p><?= nl2br(htmlspecialchars(substr($course['description'],0,200), ENT_QUOTES, 'UTF-8')) ?>…</p>
+              <h3 class="text-success">
+                <?= $course['price']==0 ? 'Free' : '$'.number_format($course['price'],2) ?>
+              </h3>
+            </div>
+          </div>
+
+          <!-- Checkout form -->
+          <form method="POST" enctype="multipart/form-data">
+            <input type="hidden" name="csrf_token" value="<?= $csrfToken ?>">
+
+            <!-- Student info -->
+            <div class="card mb-4">
+              <div class="card-header"><h6><i class="fas fa-user"></i> Student Information</h6></div>
+              <div class="card-body row">
+                <div class="col-md-6">
+                  <label class="form-label">Name</label>
+                  <input type="text" class="form-control" value="<?= htmlspecialchars($currentUser['name'], ENT_QUOTES, 'UTF-8') ?>" disabled>
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label">Email</label>
+                  <input type="email" class="form-control" value="<?= htmlspecialchars($currentUser['email'], ENT_QUOTES, 'UTF-8') ?>" disabled>
+                </div>
+              </div>
+            </div>
+
+            <?php if ($course['price'] > 0): ?>
+              <!-- Payment info -->
+              <div class="card mb-4">
+                <div class="card-header"><h6><i class="fas fa-credit-card"></i> Payment Information</h6></div>
+                <div class="card-body">
+                  <p><strong>Bank:</strong> VulnBank<br>
+                     <strong>Acc No:</strong> 1234567890<br>
+                     <strong>Amount:</strong> $<?= number_format($course['price'],2) ?>
+                  </p>
+                  <div class="mb-3">
+                    <label class="form-label" for="payment_proof">Payment Proof (JPG/PNG only)</label>
+                    <input type="file" class="form-control" id="payment_proof" name="payment_proof" accept=".jpg,.jpeg,.png" required>
+                  </div>
+                </div>
+              </div>
+            <?php endif; ?>
+
+            <!-- Summary & actions -->
+            <div class="card mb-4">
+              <div class="card-header"><h6><i class="fas fa-receipt"></i> Order Summary</h6></div>
+              <div class="card-body">
+                <div class="d-flex justify-content-between">
+                  <span>Course Price:</span><span><?= $course['price']==0 ? 'Free' : '$'.number_format($course['price'],2) ?></span>
+                </div>
+                <div class="d-flex justify-content-between">
+                  <span>Processing Fee:</span><span>$0.00</span>
+                </div>
+                <hr>
+                <div class="d-flex justify-content-between h5">
+                  <span>Total:</span><span class="text-success"><?= $course['price']==0 ? 'Free' : '$'.number_format($course['price'],2) ?></span>
+                </div>
+              </div>
+            </div>
+
+            <div class="d-flex justify-content-between">
+              <a href="<?= BASE_URL ?>/pages/member/course-detail.php?id=<?= $courseId ?>" class="btn btn-secondary">
+                <i class="fas fa-arrow-left"></i> Back
+              </a>
+              <button type="submit" class="btn btn-success">
+                <i class="fas fa-check"></i>
+                <?= $course['price']==0 ? 'Enroll for Free' : 'Submit Payment' ?>
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
     </div>
+  </div>
 </div>
 
 <?php require_once '../../template/footer.php'; ?>
