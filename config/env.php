@@ -63,19 +63,18 @@ function startSession() {
     }
 }
 
-// Vulnerable: No CSRF protection
 function isLoggedIn() {
     return isset($_SESSION['user_id']);
 }
 
 function getCurrentUser() {
-    if (!isLoggedIn() || requireRole(['member','company'])) return null;
+    if (!isLoggedIn() || !requireRole(['member','company'])) return null;
     
     $conn = getConnection();
     $userId = $_SESSION['user_id'];
     
     $stmt = $conn->prepare("SELECT users.*, companies.id AS company_id FROM users LEFT JOIN companies ON users.id = companies.user_id WHERE users.id = ?");
-    $stmt->bind_param("s", $userId); // "s" means the parameter is a string
+    $stmt->bind_param("i", $userId); // "s" means the parameter is a string
     $stmt->execute();
     $result = $stmt->get_result();
     
