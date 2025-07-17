@@ -55,24 +55,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             $description = isset($_POST['description']) ? htmlspecialchars(trim($_POST['description']), ENT_QUOTES, 'UTF-8') : '';
             $price = $_POST['price'] ?? 0;
             
-            // Vulnerable: No authorization check - could update other company's courses
-            // Vulnerable: SQL injection
-            $updateQuery = "UPDATE courses SET 
-                            title = '$title', 
-                            description = '$description', 
-                            price = $price 
-                            WHERE id = $courseId";
+            $stmt = $conn->prepare("UPDATE courses SET title = ?, description = ?, price = ? WHERE id = ? AND company_id = ?");
+            $stmt->bind_param("ssdi", $title, $description, $price, $courseId);
             
-            if ($conn->query($updateQuery)) {
+            if ($stmt->execute()) {
                 $success = "Course updated successfully!";
             } else {
-                $error = "Failed to update course: " . $conn->error;
+                $error = "Failed to update course: " . $stmt->error;
             }
+            $stmt->close();
         } elseif ($action === 'delete') {
             $courseId = $_POST['course_id'] ?? 0;
             
-            // Vulnerable: No authorization check and SQL injection
-            $deleteQuery = "DELETE FROM courses WHERE id = $courseId";
+            $deleteQuery = "DELETE FROM courses WHERE id = ? AND company_id = ?";
+            $stmt = $conn->prepare($deleteQuery);
+            $stmt->bind_param("ii", $courseId, $company['id']);
+            $deleteSuccess = $stmt->execute();
+            $stmt->close();
             
             if ($conn->query($deleteQuery)) {
                 $success = "Course deleted successfully!";
@@ -124,11 +123,9 @@ require_once '../../template/nav.php';
                 <div class="col-md-6 mb-4">
                     <div class="card h-100">
                         <div class="card-body">
-                            <!-- Vulnerable: XSS in course title -->
-                            <h5 class="card-title"><?php echo $course['title']; ?></h5>
+                            <h5 class="card-title"><?php echo htmlspecialchars($course['title']); ?></h5>
                             
-                            <!-- Vulnerable: XSS in description -->
-                            <p class="card-text"><?php echo substr($course['description'], 0, 150) . '...'; ?></p>
+                            <p class="card-text"><?php echo htmlspecialchars(substr($course['description'], 0, 150)) . '...'; ?></p>
                             
                             <div class="d-flex justify-content-between align-items-center mb-3">
                                 <span class="badge bg-success fs-6">
