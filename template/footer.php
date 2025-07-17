@@ -30,32 +30,26 @@
     <!-- Bootstrap JS -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     
-    <!-- Vulnerable: Inline JavaScript without CSP -->
     <script>
-        // Vulnerable: Eval usage for dynamic content
-        function executeCode(code) {
-            eval(code);
-        }
-        
-        // Vulnerable: No CSRF protection on AJAX calls
         function makeRequest(url, data) {
+            const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
             fetch(url, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(data)
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-Token': csrfToken || ''
+            },
+            body: JSON.stringify(data)
             });
         }
         
-        // Vulnerable: XSS through URL parameters
         const urlParams = new URLSearchParams(window.location.search);
         const message = urlParams.get('message');
         if (message) {
             document.addEventListener('DOMContentLoaded', function() {
                 const alert = document.createElement('div');
                 alert.className = 'alert alert-info';
-                alert.innerHTML = message; // Vulnerable to XSS
+                alert.textContent = message; 
                 document.body.insertBefore(alert, document.body.firstChild);
             });
         }
