@@ -30,17 +30,16 @@
     <!-- Bootstrap JS -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     
-    <!-- Vulnerable: Inline JavaScript without CSP -->
     <script>
-        
-        // Vulnerable: No CSRF protection on AJAX calls
         function makeRequest(url, data) {
+            const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
             fetch(url, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(data)
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-Token': csrfToken || ''
+            },
+            body: JSON.stringify(data)
             });
         }
         
