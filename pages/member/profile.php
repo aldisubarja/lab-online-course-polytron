@@ -22,7 +22,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['use_api'])) {
     }else{
         // Fallback to traditional form processing if API fails
         $updateFields = [];
-        $allowedFields = ['name', 'email', 'phone', 'role', 'avatar']; // role should not be user-editable!
+        $allowedFields = ['name', 'email', 'phone', 'avatar'];
 
         foreach ($_POST as $key => $value) {
             if (in_array($key, $allowedFields)) {
@@ -32,40 +32,57 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['use_api'])) {
 
         $errors = [];
 
-        // Vulnerable: No input validation and XSS
         if (empty($updateFields['name'])) {
             $errors[] = "Name is required";
+        } else {
+            $updateFields['name'] = htmlspecialchars(trim($updateFields['name']), ENT_QUOTES, 'UTF-8');
         }
 
         if (empty($updateFields['email'])) {
             $errors[] = "Email is required";
+        } else {
+            $updateFields['email'] = htmlspecialchars(trim($updateFields['email']), ENT_QUOTES, 'UTF-8');
         }
 
         if (empty($updateFields['phone'])) {
             $errors[] = "Phone is required";
+        } else {
+            $updateFields['phone'] = htmlspecialchars(trim($updateFields['phone']), ENT_QUOTES, 'UTF-8');
         }
         
-        // Handle file upload
         if (isset($_FILES['avatar']) && $_FILES['avatar']['error'] === UPLOAD_ERR_OK) {
-            // Vulnerable: No file type validation
-            // Vulnerable: No file size limits
-            // Vulnerable: Arbitrary file upload
+            $allowedMimeTypes = ['image/jpeg', 'image/png', 'image/gif'];
+            $maxFileSize = 2 * 1024 * 1024;
 
-            $fileName = $_FILES['avatar']['name'];
-            $targetDir = 'uploads/avatars/';
+            $fileTmpPath = $_FILES['avatar']['tmp_name'];
+            $fileName = basename($_FILES['avatar']['name']);
+            $fileSize = $_FILES['avatar']['size'];
+            $fileType = mime_content_type($fileTmpPath);
 
-            // Vulnerable: Directory traversal
-            $targetFile = $targetDir . basename($fileName);
-            
-            // Create directory if not exists
-            if (!file_exists($targetDir)) {
-                mkdir($targetDir, 0777, true); // Vulnerable: Permissive permissions
+            if (!in_array($fileType, $allowedMimeTypes)) {
+                $errors[] = "Invalid file type. Only JPG, PNG, and GIF are allowed.";
             }
 
-            if (move_uploaded_file($_FILES['avatar']['tmp_name'], $targetFile)) {
-                $updateFields['avatar'] = $targetFile;
+            elseif ($fileSize > $maxFileSize) {
+                $errors[] = "File size exceeds 2MB limit.";
+            }
+
+            elseif (preg_match('/[^\w\.\-]/', $fileName)) {
+                $errors[] = "Invalid file name.";
             } else {
-                $errors[] = "Failed to upload avatar";
+                $targetDir = 'uploads/avatars/';
+                $targetFile = $targetDir . uniqid('avatar_', true) . '.' . pathinfo($fileName, PATHINFO_EXTENSION);
+
+                // Create directory if not exists with secure permissions
+                if (!file_exists($targetDir)) {
+                    mkdir($targetDir, 0755, true);
+                }
+
+                if (move_uploaded_file($fileTmpPath, $targetFile)) {
+                    $updateFields['avatar'] = $targetFile;
+                } else {
+                    $errors[] = "Failed to upload avatar";
+                }
             }
         }
 
